@@ -1,0 +1,40 @@
+# === Секреты — НИКОГДА не коммитим (кроме шаблонов .env.example) ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# === Зависимости (ставятся при сборке) ===
+node_modules/
+vendor/
+
+# === Артефакты сборки ===
+dist/
+build/
+*.tsbuildinfo
+# Go-бинарники парсера
+parser/app
+parser/parser
+parser/parser.exe
+*.exe
+*.out
+
+# === Логи / кэш ===
+*.log
+.phpunit.result.cache
+
+# === ОС / редакторы ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.zed/
+
+# === Временное / тестовое (не для репо) ===
+scratchpad/
+.playwright-mcp/
+*.tmp
+
+# Claude Code — локальные настройки машины
+.claude/settings.local.json

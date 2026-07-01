@@ -1,0 +1,82 @@
+/*
+ * Sravni.tj — design tokens.
+ * Palette: eskhata.com reference (PRD §"Цветовая палитра").
+ * Rule: NO raw hex anywhere in components — only these variables.
+ */
+:root {
+  /* Brand palette (frozen from PRD) */
+  --color-primary: #0050c8;
+  --color-primary-light: #1683ff;
+  --color-primary-dark: #0448af;
+  --color-accent-green: #598e32;
+  --color-danger: #ea3c4a;
+
+  --color-text-primary: #2c2d2e;
+  --color-text-secondary: #696e82;
+  --color-text-muted: #a3aab4;
+
+  --color-border: #e4e4e7;
+  --color-border-subtle: #e3e6ef;
+
+  --color-bg: #ffffff;
+  --color-bg-section: #f4f4f5;
+  --color-bg-offwhite: #f9f9f9;
+  --color-bg-blue-tint: #f3f3ff;
+
+  --color-footer-bg: #404052;
+  --color-footer-text: #696e82;
+
+  /* Derived translucent / state colors */
+  --color-primary-soft: rgba(0, 80, 200, 0.08);
+  --color-primary-soft-strong: rgba(0, 80, 200, 0.14);
+  --color-danger-soft: rgba(234, 60, 74, 0.1);
+  --color-accent-green-soft: rgba(89, 142, 50, 0.12);
+  --color-overlay: rgba(44, 45, 46, 0.55);
+
+  /* Typography */
+  --font-display: 'Manrope', system-ui, sans-serif;
+  --font-body: 'Spline Sans', system-ui, sans-serif;
+  --font-mono: 'Spline Sans', ui-monospace, monospace;
+
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+  --fs-4xl: 3rem;
+
+  /* Spacing scale (0.25rem step) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* Shadows (subtle, narrative depth) */
+  --shadow-sm: 0 1px 2px rgba(44, 45, 46, 0.06);
+  --shadow-md: 0 4px 16px rgba(44, 45, 46, 0.08);
+  --shadow-lg: 0 12px 32px rgba(44, 45, 46, 0.12);
+  --shadow-focus: 0 0 0 3px var(--color-primary-soft-strong);
+
+  /* Layout */
+  --container-max: 1200px;
+  --header-height: 68px;
+
+  --transition-fast: 120ms ease;
+  --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}

@@ -1,0 +1,19 @@
+# Зависимости
+node_modules/
+
+# Сборка
+dist/
+*.tsbuildinfo
+
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Тесты / кэш
+coverage/
+.playwright-mcp/
+
+# Логи
+*.log
+npm-debug.log*

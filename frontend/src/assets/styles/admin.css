@@ -1,0 +1,278 @@
+/* Admin-panel shared styles. Inherits design tokens from tokens.css/base.css. */
+
+.adm {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+  background: var(--color-bg-offwhite);
+}
+
+/* Sidebar */
+.adm__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.adm__brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  color: var(--color-primary);
+  padding: 0 var(--space-3) var(--space-4);
+}
+.adm__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.adm__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.adm__link:hover {
+  background: var(--color-bg-section);
+  color: var(--color-text-primary);
+}
+.adm__link.router-link-active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.adm__side-foot {
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.adm__user {
+  font-size: var(--fs-sm);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.adm__user-role {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+/* Main */
+.adm__main {
+  padding: var(--space-6) var(--space-7);
+  max-width: 1100px;
+}
+.adm__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+.adm__title {
+  font-size: var(--fs-2xl);
+}
+.adm__toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Card */
+.adm-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  /* Широкие таблицы скроллятся внутри карточки, а не растягивают страницу. */
+  overflow-x: auto;
+}
+
+/* Table */
+.adm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.adm-table th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--color-border);
+}
+.adm-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  vertical-align: middle;
+}
+.adm-table tr:last-child td {
+  border-bottom: 0;
+}
+.adm-table tr:hover td {
+  background: var(--color-bg-section);
+}
+.adm-table__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* Badge */
+.adm-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.adm-badge--green { background: rgba(89, 142, 50, 0.12); color: var(--color-accent-green); }
+.adm-badge--gray { background: var(--color-bg-section); color: var(--color-text-muted); }
+.adm-badge--blue { background: var(--color-primary-soft); color: var(--color-primary); }
+.adm-badge--red { background: var(--color-danger-soft); color: var(--color-danger); }
+.adm-badge--amber { background: rgba(214, 158, 46, 0.14); color: #b7791f; }
+
+/* Form */
+.adm-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.adm-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+.adm-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.adm-field__label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.adm-input,
+.adm-select,
+.adm-textarea {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+}
+.adm-input:focus,
+.adm-select:focus,
+.adm-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-focus);
+}
+.adm-input--error {
+  border-color: var(--color-danger);
+}
+.adm-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+.adm-field__error {
+  font-size: var(--fs-sm);
+  color: var(--color-danger);
+}
+.adm-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.adm-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* States */
+.adm-empty {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+.adm-alert {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+/* Tabs */
+.adm-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-5);
+}
+.adm-tab {
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.adm-tab--active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.adm-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  font-size: var(--fs-sm);
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 768px) {
+  .adm { grid-template-columns: 1fr; }
+  .adm__side {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .adm__nav { flex-direction: row; flex-wrap: wrap; }
+  .adm__side-foot { margin: 0; border: 0; padding: 0; flex-direction: row; }
+  .adm-grid-2 { grid-template-columns: 1fr; }
+}

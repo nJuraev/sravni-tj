@@ -1,0 +1,82 @@
+# Sravni.tj — локальный стек разработки.
+# Контейнеры закрывают отсутствие локальных PHP 8.x / Go: всё собирается и запускается в Docker.
+# Секреты переопределяются через .env рядом с этим файлом (см. .env.example).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sravni-db
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-sravni}
+      POSTGRES_USER: ${DB_USERNAME:-sravni}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-sravni} -d ${DB_DATABASE:-sravni}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: sravni-backend
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Запуск API после инициализации Laravel:
+    #   docker compose run --rm backend composer install
+    #   docker compose run --rm backend php artisan migrate
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+
+  parser:
+    build: ./parser
+    container_name: sravni-parser
+    working_dir: /app
+    volumes:
+      - ./parser:/app
+      # Кэш Go-модулей и компиляции переживает `run --rm` (иначе go run
+      # качает зависимости и компилирует заново при каждом запуске).
+      - parser_gomod:/go/pkg/mod
+      - parser_gocache:/root/.cache/go-build
+    # Секреты берутся из корневого .env (см. .env.example). Парсер читает их
+    # только из окружения — здесь они прокидываются в контейнер.
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${DB_USERNAME:-sravni}:${DB_PASSWORD:-secret}@db:5432/${DB_DATABASE:-sravni}?sslmode=disable}
+      SCRAPER_PROVIDER: ${SCRAPER_PROVIDER:-firecrawl}
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      # Принимаем оба имени: AI_API_KEY или OPENROUTER_API_KEY (фолбэк).
+      AI_API_KEY: ${AI_API_KEY:-${OPENROUTER_API_KEY:-}}
+      AI_MODEL: ${AI_MODEL:-}
+      PARSER_DEBUG_LOG: ${PARSER_DEBUG_LOG:-false}
+      PARSER_CONCURRENCY: ${PARSER_CONCURRENCY:-1}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Парсер запускается по крону/вручную, не как постоянный сервис:
+    #   docker compose run --rm parser go run ./cmd/parser
+    command: ["sleep", "infinity"]
+
+  frontend:
+    build: ./frontend
+    container_name: sravni-frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+
+volumes:
+  pgdata:
+  parser_gomod:
+  parser_gocache:

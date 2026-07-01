@@ -1,0 +1,13 @@
+# Скомпилированные бинарники
+app
+parser
+*.exe
+*.out
+
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Логи
+*.log
