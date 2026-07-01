@@ -31,6 +31,9 @@ export default defineConfig(({ command, mode }) => {
     preview: {
       host: true,
       allowedHosts: true,
+      // Railway задаёт порт через $PORT; startCommand его не раскрывает,
+      // поэтому берём из окружения здесь (fallback 4173 для локали).
+      port: Number(process.env.PORT) || 4173,
     },
   }
 })
