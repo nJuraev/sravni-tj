@@ -33,6 +33,7 @@ RUN composer dump-autoload --optimize --no-dev \
 
 EXPOSE 8000
 
-# Дефолтная команда (Railway переопределяет через railway.json startCommand,
-# docker-compose — через свой command). Порт берётся из $PORT при наличии.
-CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
+# Старт: миграции + сервер. Форма exec с `sh -c` гарантирует раскрытие $PORT
+# (Railway startCommand его НЕ раскрывает, поэтому команду держим в CMD).
+# docker-compose переопределяет это своим command.
+CMD ["sh", "-c", "php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
