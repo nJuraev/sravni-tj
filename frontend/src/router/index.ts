@@ -43,6 +43,16 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/CompareView.vue'),
   },
   {
+    path: '/kurs-valyut',
+    name: 'rates',
+    component: () => import('@/views/RatesView.vue'),
+  },
+  {
+    path: '/otzyvy',
+    name: 'reviews',
+    component: () => import('@/views/ReviewFormView.vue'),
+  },
+  {
     path: '/admin/login',
     name: 'admin-login',
     component: () => import('@/views/admin/LoginView.vue'),

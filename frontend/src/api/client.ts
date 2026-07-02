@@ -1,6 +1,9 @@
 import type {
   BankListResponse,
   BankResponse,
+  BankReviewCreateResponse,
+  BankReviewListResponse,
+  BankReviewRequest,
   BestRateQuery,
   BestRateResponse,
   LeadRequest,
@@ -8,15 +11,20 @@ import type {
   ProductListResponse,
   ProductQuery,
   ProductResponse,
+  RateListQuery,
+  RateListResponse,
 } from '@/types/api'
 import { WIRE_LOCALE, type Locale } from '@/types/api'
 import { ApiError } from './errors'
 import {
+  mockCreateBankReview,
   mockGetBank,
+  mockGetBankReviews,
   mockGetBanks,
   mockGetBestRate,
   mockGetProduct,
   mockGetProducts,
+  mockGetRates,
   mockPostLead,
 } from './mocks/handlers'
 
@@ -130,6 +138,28 @@ export const api = {
   createLead(body: LeadRequest): Promise<LeadResponse> {
     if (USE_MOCKS) return mockPostLead(body)
     return request<LeadResponse>('/leads', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  getRates(query: RateListQuery = {}): Promise<RateListResponse> {
+    if (USE_MOCKS) return mockGetRates(query)
+    const params = new URLSearchParams()
+    if (query.currency) params.set('currency', query.currency)
+    if (query.category) params.set('category', query.category)
+    const qs = params.toString()
+    return request<RateListResponse>(`/rates${qs ? `?${qs}` : ''}`)
+  },
+
+  getBankReviews(bankId: number, page = 1): Promise<BankReviewListResponse> {
+    if (USE_MOCKS) return mockGetBankReviews(bankId, page)
+    return request<BankReviewListResponse>(`/banks/${bankId}/reviews?page=${page}`)
+  },
+
+  createBankReview(bankId: number, body: BankReviewRequest): Promise<BankReviewCreateResponse> {
+    if (USE_MOCKS) return mockCreateBankReview(bankId, body)
+    return request<BankReviewCreateResponse>(`/banks/${bankId}/reviews`, {
       method: 'POST',
       body: JSON.stringify(body),
     })

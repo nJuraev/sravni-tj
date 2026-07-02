@@ -66,13 +66,17 @@ const isVisible = computed(() => status.value === 'loaded')
         <div class="rate-categories">
           <RateCategoryCard
             :title="t('home.rates.transfer')"
-            tag="Transfer"
+            :tag="t('home.rates.transferTag')"
             :rows="rowsByCategory.transfer"
           />
-          <RateCategoryCard :title="t('home.rates.cash')" tag="Cash" :rows="rowsByCategory.cash" />
+          <RateCategoryCard
+            :title="t('home.rates.cash')"
+            :tag="t('home.rates.cashTag')"
+            :rows="rowsByCategory.cash"
+          />
         </div>
         <div class="rate-categories__footer">
-          <RouterLink class="section-cta" to="/credit">{{ t('home.rates.allBanks') }} →</RouterLink>
+          <RouterLink class="section-cta" to="/kurs-valyut">{{ t('home.rates.allBanks') }} →</RouterLink>
         </div>
       </template>
     </div>

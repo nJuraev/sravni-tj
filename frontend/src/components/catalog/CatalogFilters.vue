@@ -6,6 +6,7 @@ import { FEATURE_KEYS, SUBCATEGORIES_BY_CATEGORY } from '@/composables/useProduc
 import { DEFAULT_SORT } from '@/composables/useCatalogQuery'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import { api } from '@/api/client'
+import { bankLogoUrl } from '@/lib/bankIcon'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseTextField from '@/components/ui/BaseTextField.vue'
 import BaseCheckbox from '@/components/ui/BaseCheckbox.vue'
@@ -21,18 +22,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { name } = useLocalizedField()
 
-function faviconUrl(website?: string | null): string {
-  if (!website) return ''
-  try {
-    return `https://www.google.com/s2/favicons?sz=64&domain=${new URL(website).hostname}`
-  } catch {
-    return ''
-  }
-}
-
 const banks = ref<Bank[]>([])
 const bankTiles = computed(() =>
-  banks.value.map((b) => ({ id: b.id, name: name(b), icon: faviconUrl(b.website) })),
+  banks.value.map((b) => ({ id: b.id, name: name(b), icon: bankLogoUrl(b) })),
 )
 onMounted(async () => {
   try {

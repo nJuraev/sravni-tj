@@ -56,6 +56,7 @@ export interface Bank {
   name_ru: string
   name_tg: string | null
   is_partner: boolean
+  logo_url?: string | null
   website?: string | null
   phone?: string | null
   address_ru?: string | null
@@ -212,4 +213,41 @@ export interface Rate {
 
 export interface BestRateResponse {
   data: Rate | null
+}
+
+/** GET /api/rates query — both filters optional. */
+export interface RateListQuery {
+  currency?: string
+  category?: RateCategory
+}
+
+export interface RateListResponse {
+  data: Rate[]
+}
+
+/** GET/POST /api/banks/{bank}/reviews — только одобренные отдаются наружу. */
+export interface BankReview {
+  id: number
+  author_name: string
+  rating: number
+  body: string
+  created_at: string | null
+}
+
+export interface BankReviewListResponse {
+  data: BankReview[]
+  pagination: Pagination
+}
+
+/** POST /api/banks/{bank}/reviews request body. */
+export interface BankReviewRequest {
+  author_name: string
+  rating: number
+  body: string
+  consent: boolean
+}
+
+export interface BankReviewCreateResponse {
+  data: { id: number; status: string }
+  message: string
 }
