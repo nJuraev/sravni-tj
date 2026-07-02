@@ -39,16 +39,16 @@ const description = computed(() =>
   product.value ? value(product.value.description_ru, product.value.description_tg) : '',
 )
 const keyConditions = computed(() =>
-  product.value ? (loc.value === 'tg' && product.value.key_conditions_tg?.length ? product.value.key_conditions_tg : product.value.key_conditions_ru) ?? [] : [],
+  product.value ? (loc.value === 'tj' && product.value.key_conditions_tg?.length ? product.value.key_conditions_tg : product.value.key_conditions_ru) ?? [] : [],
 )
 const documents = computed(() =>
-  product.value ? (loc.value === 'tg' && product.value.documents_tg?.length ? product.value.documents_tg : product.value.documents_ru) ?? [] : [],
+  product.value ? (loc.value === 'tj' && product.value.documents_tg?.length ? product.value.documents_tg : product.value.documents_ru) ?? [] : [],
 )
 
 const parsedAt = computed(() => {
   if (!product.value?.parsed_at) return ''
   try {
-    return new Intl.DateTimeFormat(loc.value === 'tg' ? 'tg-Cyrl-TJ' : 'ru-RU', {
+    return new Intl.DateTimeFormat(loc.value === 'tj' ? 'tg-Cyrl-TJ' : 'ru-RU', {
       dateStyle: 'long',
       timeStyle: 'short',
     }).format(new Date(product.value.parsed_at))

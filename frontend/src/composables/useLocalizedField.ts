@@ -11,17 +11,17 @@ interface LocalizedPair {
  * (contracts.md: *_tg may be null; *_ru always present).
  */
 export function localizedName(item: LocalizedPair, locale: Locale): string {
-  if (locale === 'tg' && item.name_tg) return item.name_tg
+  if (locale === 'tj' && item.name_tg) return item.name_tg
   return item.name_ru
 }
 
-/** Generic: choose tg value when present and locale is tg, else ru. */
+/** Generic: choose the *_tg field when present and the UI locale is tj, else ru. */
 export function localizedValue(
   ru: string | null,
   tg: string | null,
   locale: Locale,
 ): string {
-  if (locale === 'tg' && tg) return tg
+  if (locale === 'tj' && tg) return tg
   return ru ?? ''
 }
 

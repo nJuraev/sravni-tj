@@ -1,0 +1,23 @@
+# Продакшен-образ парсера для Railway (cron). Локальная разработка использует
+# отдельный Dockerfile (dev-образ + volume-mount исходников, см. docker-compose.yml)
+# — этот файл его не трогает и не заменяет.
+FROM golang:1.23-alpine AS build
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o /app/app ./cmd/parser
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+
+WORKDIR /app
+COPY --from=build /app/app ./app
+
+CMD ["./app"]

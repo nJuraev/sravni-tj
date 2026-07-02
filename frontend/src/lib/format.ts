@@ -1,8 +1,8 @@
 import type { Currency, Locale } from '@/types/api'
 
-/** Map app locale to a BCP-47 tag (tg has weak Intl support → use ru numerics). */
+/** Map app locale to a BCP-47 tag (Tajik has weak Intl support → use ru numerics). */
 function intlLocale(locale: Locale): string {
-  return locale === 'tg' ? 'tg-Cyrl-TJ' : 'ru-RU'
+  return locale === 'tj' ? 'tg-Cyrl-TJ' : 'ru-RU'
 }
 
 /** Money formatting in product currency, locale-aware, 2 decimals. */
@@ -20,7 +20,7 @@ export function formatMoney(value: number, currency: Currency, locale: Locale): 
 }
 
 export function formatNumber(value: number, locale: Locale, maxFractionDigits = 0): string {
-  return new Intl.NumberFormat(intlLocale(locale === 'tg' ? 'tg' : 'ru'), {
+  return new Intl.NumberFormat(intlLocale(locale), {
     maximumFractionDigits: maxFractionDigits,
   }).format(value)
 }

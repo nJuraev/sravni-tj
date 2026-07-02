@@ -9,7 +9,7 @@ import type {
   ProductQuery,
   ProductResponse,
 } from '@/types/api'
-import type { Locale } from '@/types/api'
+import { WIRE_LOCALE, type Locale } from '@/types/api'
 import { ApiError } from './errors'
 import {
   mockGetBank,
@@ -66,7 +66,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: {
         Accept: 'application/json',
-        'Accept-Language': activeLocale,
+        // Контракт бэкенда — ru|tg (docs/api/contracts.md); tj — только код фронта.
+        'Accept-Language': WIRE_LOCALE[activeLocale],
         ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
         ...init?.headers,
       },

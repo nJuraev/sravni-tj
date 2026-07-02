@@ -4,7 +4,20 @@
 
 export type Category = 'credit' | 'deposit' | 'installment'
 export type Currency = 'TJS' | 'USD' | 'EUR'
-export type Locale = 'ru' | 'tg'
+
+/**
+ * UI-код языка. `tj` — внутренний код фронта (не ISO 639-1: там таджикский —
+ * `tg`). *_tg-поля контракта (name_tg и т.д.) и Accept-Language к бэкенду
+ * остаются `tg` — это заморожено в docs/api/contracts.md, маппинг на границе
+ * см. `setApiLocale` в api/client.ts.
+ */
+export type Locale = 'ru' | 'tj'
+
+/**
+ * Внутренний код → технически верный код для <html lang> / Accept-Language
+ * (BCP-47 для таджикского — `tg`, не `tj`; `tj` — код страны, не языка).
+ */
+export const WIRE_LOCALE: Record<Locale, 'ru' | 'tg'> = { ru: 'ru', tj: 'tg' }
 
 /** Product subcategory codes (frozen, see docs/api/contracts.md). */
 export type CreditSubcategory =
