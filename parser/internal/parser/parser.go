@@ -296,16 +296,20 @@ func toProductSources(products []model.ParsedProduct, url string) []productSourc
 // (защита от взрывного роста AI-вызовов и от мусорных ссылок).
 const maxDetailPages = 40
 
-// gatherFromLinks обходит ссылки на детальные страницы продуктов (index-режим):
-// каждую скрейпит и извлекает, агрегируя продукты. Ошибки отдельных ссылок не
-// валят задачу (пропускаются с логом). Рекурсии нет — product_links деталей
-// игнорируются. Относительные ссылки резолвятся относительно URL листинга,
-// внешние домены отбрасываются.
-func (p *Parser) gatherFromLinks(ctx context.Context, task model.SourceTask, links []model.ProductLink) []productSource {
+// detailJob — резолвленная детальная ссылка, готовая к скрейпу+извлечению.
+type detailJob struct {
+	url     string
+	section *string
+}
+
+// resolveDetailLinks резолвит относительные ссылки относительно URL листинга,
+// отбрасывает внешние домены и дубли (после нормализации), режет по
+// maxDetailPages. Чистая функция без сети — безопасно вызывать до запуска
+// горутин ниже.
+func resolveDetailLinks(task model.SourceTask, links []model.ProductLink, log *slog.Logger) []detailJob {
 	base, baseErr := url.Parse(task.URL)
 	seen := make(map[string]bool)
-	var out []productSource
-	count := 0
+	var jobs []detailJob
 
 	for _, link := range links {
 		s := strings.TrimSpace(link.URL)
@@ -324,40 +328,74 @@ func (p *Parser) gatherFromLinks(ctx context.Context, task model.SourceTask, lin
 			continue
 		}
 		seen[key] = true
-		if count >= maxDetailPages {
-			p.log.Warn("index: достигнут лимит детальных страниц", "task_id", task.ID, "limit", maxDetailPages)
+		if len(jobs) >= maxDetailPages {
+			log.Warn("index: достигнут лимит детальных страниц", "task_id", task.ID, "limit", maxDetailPages)
 			break
 		}
-		count++
-
-		markdown, err := retry(ctx, func() (string, error) {
-			sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
-			defer cancel()
-			return p.scraper.Scrape(sctx, abs)
-		})
-		if err != nil {
-			p.log.Warn("index: scrape детали не удался", "task_id", task.ID, "url", abs, "err", err)
-			continue
-		}
-		// Гибрид-подсказка: подмешиваем заголовок раздела меню в начало markdown,
-		// чтобы AI точнее определил подкатегорию.
-		if link.Section != nil {
-			if sec := strings.TrimSpace(*link.Section); sec != "" {
-				markdown = "Раздел меню: " + sec + "\n\n" + markdown
-			}
-		}
-		ext, err := retry(ctx, func() (*extract.Extraction, error) {
-			actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
-			defer cancel()
-			return p.ai.Extract(actx, markdown, task.Category)
-		})
-		if err != nil {
-			p.log.Warn("index: extract детали не удался", "task_id", task.ID, "url", abs, "err", err)
-			continue
-		}
-		// Вложенные product_links деталей игнорируем — без рекурсии.
-		out = append(out, toProductSources(ext.Result.Products, abs)...)
+		jobs = append(jobs, detailJob{url: abs, section: link.Section})
 	}
+	return jobs
+}
+
+// gatherFromLinks обходит ссылки на детальные страницы продуктов (index-режим):
+// каждую скрейпит и извлекает, агрегируя продукты. Ссылки одной задачи
+// обрабатываются ПАРАЛЛЕЛЬНО (пул ограничен p.cfg.Concurrency — тем же
+// лимитом, что и для задач верхнего уровня), иначе банк с десятком детальных
+// страниц последовательно съедает минуты на одну задачу. Ошибки отдельных
+// ссылок не валят задачу (пропускаются с логом). Рекурсии нет — product_links
+// деталей игнорируются.
+func (p *Parser) gatherFromLinks(ctx context.Context, task model.SourceTask, links []model.ProductLink) []productSource {
+	jobs := resolveDetailLinks(task, links, p.log)
+
+	var (
+		mu  sync.Mutex
+		out []productSource
+		wg  sync.WaitGroup
+	)
+	sem := make(chan struct{}, p.cfg.Concurrency)
+
+	for _, j := range jobs {
+		j := j
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			markdown, err := retry(ctx, func() (string, error) {
+				sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
+				defer cancel()
+				return p.scraper.Scrape(sctx, j.url)
+			})
+			if err != nil {
+				p.log.Warn("index: scrape детали не удался", "task_id", task.ID, "url", j.url, "err", err)
+				return
+			}
+			// Гибрид-подсказка: подмешиваем заголовок раздела меню в начало markdown,
+			// чтобы AI точнее определил подкатегорию.
+			if j.section != nil {
+				if sec := strings.TrimSpace(*j.section); sec != "" {
+					markdown = "Раздел меню: " + sec + "\n\n" + markdown
+				}
+			}
+			ext, err := retry(ctx, func() (*extract.Extraction, error) {
+				actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
+				defer cancel()
+				return p.ai.Extract(actx, markdown, task.Category)
+			})
+			if err != nil {
+				p.log.Warn("index: extract детали не удался", "task_id", task.ID, "url", j.url, "err", err)
+				return
+			}
+			// Вложенные product_links деталей игнорируем — без рекурсии.
+			products := toProductSources(ext.Result.Products, j.url)
+
+			mu.Lock()
+			out = append(out, products...)
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
 	return out
 }
 
