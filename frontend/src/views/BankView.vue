@@ -11,6 +11,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 import SkeletonCard from '@/components/ui/SkeletonCard.vue'
+import BankReviews from '@/components/bank/BankReviews.vue'
 
 const props = defineProps<{ id: number }>()
 
@@ -119,6 +120,8 @@ watch(() => props.id, (id) => load(id), { immediate: true })
           </div>
         </dl>
       </BaseCard>
+
+      <BankReviews :bank-id="bank.id" />
     </article>
   </div>
 </template>

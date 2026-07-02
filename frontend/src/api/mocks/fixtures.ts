@@ -1,4 +1,4 @@
-import type { Bank, Product, Rate } from '@/types/api'
+import type { Bank, BankReview, Product, Rate } from '@/types/api'
 
 /**
  * Mock fixtures derived from docs/api/contracts.md examples, expanded into a
@@ -355,3 +355,12 @@ export const mockRates: Rate[] = [
   { bank: mockBanks[3], currency: 'RUB', category: 'transfer', buy: 0.116, sell: 0.12, rate_date: '2026-07-02' },
   { bank: mockBanks[0], currency: 'RUB', category: 'transfer', buy: 0.113, sell: 0.121, rate_date: '2026-07-02' },
 ]
+
+/** Отзывы только у банка id=7 — демонстрирует ветку «список показан, ≥3 одобренных». */
+export const mockBankReviews: Record<number, BankReview[]> = {
+  7: [
+    { id: 1, author_name: 'Фарҳод', rating: 5, body: 'Оформил кредит онлайн за день, менеджер перезвонил быстро.', created_at: '2026-06-28T10:00:00Z' },
+    { id: 2, author_name: 'Мадина', rating: 4, body: 'Вклад открыла без визита в отделение, всё понятно объяснили по телефону.', created_at: '2026-06-20T14:30:00Z' },
+    { id: 3, author_name: 'Ситора', rating: 5, body: 'Курс валют выгодный, обслуживание вежливое.', created_at: '2026-06-10T09:15:00Z' },
+  ],
+}

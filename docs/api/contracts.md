@@ -353,6 +353,7 @@ Accept-Language: tg
 | `name_ru` | string | нет | название (рус.) |
 | `name_tg` | string | да | название (тадж.) |
 | `is_partner` | boolean | нет | признак партнёра (информационно) |
+| `logo_url` | string | да | путь до логотипа банка (относительный, `/bank-logos/*`) |
 | `website` | string | да | сайт банка |
 | `phone` | string | да | телефон банка |
 | `address_ru` | string | да | адрес (рус.) |

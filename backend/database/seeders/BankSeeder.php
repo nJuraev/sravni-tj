@@ -55,6 +55,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Худжанд, ул. Гагарина, 135',
                 'address_tg' => null,
                 'contact_email' => 'info2@eskhata.tj',
+                'logo_url' => '/bank-logos/eskhata.png',
             ],
             [
                 'slug' => 'dushanbe-city',
@@ -65,6 +66,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, р. Фирдавси, ул. Сохили 5',
                 'address_tg' => null,
                 'contact_email' => 'info1@dc.tj',
+                // dc.tj недоступен из парсера/CI (таймаут) — иконку не смогли снять с сайта.
             ],
             [
                 'slug' => 'spitamen',
@@ -75,6 +77,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. Бободжон Гафуров 45',
                 'address_tg' => null,
                 'contact_email' => 'info@spitamen.com',
+                'logo_url' => '/bank-logos/spitamen.ico',
             ],
             [
                 'slug' => 'arvand',
@@ -85,6 +88,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'Согдийская область, г. Худжанд, проспект Исмоили Сомони 1 А',
                 'address_tg' => null,
                 'contact_email' => 'office@arvand.tj',
+                'logo_url' => '/bank-logos/arvand.ico',
             ],
             [
                 'slug' => 'alif',
@@ -95,6 +99,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. Багаутдинова 9',
                 'address_tg' => null,
                 'contact_email' => 'info@alif.tj',
+                'logo_url' => '/bank-logos/alif.svg',
             ],
             [
                 'slug' => 'amonatbank',
@@ -105,6 +110,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки, 105',
                 'address_tg' => null,
                 'contact_email' => 'info@amonatbonk.tj',
+                // amonatbonk.tj недоступен из парсера/CI (таймаут) — иконку не смогли снять с сайта.
             ],
             [
                 'slug' => 'oriyonbank',
@@ -115,6 +121,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки, 95/1',
                 'address_tg' => null,
                 'contact_email' => 'info@orienbank.com',
+                'logo_url' => '/bank-logos/oriyonbank.ico',
             ],
             [
                 'slug' => 'imon',
@@ -125,6 +132,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'Согдийская область, город Худжанд, микрорайон 17, 2',
                 'address_tg' => null,
                 'contact_email' => 'info@imon.tj',
+                'logo_url' => '/bank-logos/imon.ico',
             ],
             [
                 'slug' => 'tawhidbank',
@@ -135,6 +143,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. С. Айни 4/1',
                 'address_tg' => null,
                 'contact_email' => 'info@tawhidbank.tj',
+                // tawhidbank.tj недоступен из парсера/CI (таймаут) — иконку не смогли снять с сайта.
             ],
             [
                 'slug' => 'icb',
@@ -145,6 +154,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район И. Сомони, ул. Пушкина 10',
                 'address_tg' => null,
                 'contact_email' => 'info@icb.tj',
+                // icb.tj отдаёт заглушку вместо favicon (1x1 data-URI) — валидной иконки нет.
             ],
             [
                 'slug' => 'dbt',
@@ -155,6 +165,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. А. Пушкина, 20',
                 'address_tg' => null,
                 'contact_email' => 'info@brt.tj',
+                'logo_url' => '/bank-logos/dbt.png',
             ],
             [
                 'slug' => 'activbank',
@@ -165,6 +176,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район Сино, улица Дилкушо 26/1',
                 'address_tg' => null,
                 'contact_email' => 'info@activbank.tj',
+                // activbank.tj недоступен из парсера/CI (таймаут) — иконку не смогли снять с сайта.
             ],
             [
                 'slug' => 'ibt',
@@ -175,6 +187,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район Шохмансур, улица Бухоро 27',
                 'address_tg' => null,
                 'contact_email' => 'info@ibt.tj',
+                'logo_url' => '/bank-logos/ibt.ico',
             ],
             [
                 'slug' => 'cbt',
@@ -185,6 +198,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район И. Сомони, улица Бохтар 37/1',
                 'address_tg' => null,
                 'contact_email' => 'info@cbt.tj',
+                'logo_url' => '/bank-logos/cbt.ico',
             ],
             [
                 'slug' => 'ssb',
@@ -195,6 +209,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Саади Ширази 21',
                 'address_tg' => null,
                 'contact_email' => 'info@ssb.tj',
+                // ssb.tj недоступен из парсера/CI (таймаут) — иконку не смогли снять с сайта.
             ],
             [
                 'slug' => 'freedom',
@@ -205,6 +220,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки 81B',
                 'address_tg' => null,
                 'contact_email' => 'info@freedombank.tj',
+                'logo_url' => '/bank-logos/freedom.ico',
             ],
             [
                 'slug' => 'humo',
@@ -215,6 +231,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, р. Фирдавси, улица Н. Карабоев 148/1',
                 'address_tg' => null,
                 'contact_email' => 'office@humo.tj',
+                'logo_url' => '/bank-logos/humo.ico',
             ],
             [
                 'slug' => 'vasl',

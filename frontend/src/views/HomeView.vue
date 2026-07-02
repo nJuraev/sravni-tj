@@ -7,6 +7,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import RateWidget from '@/components/home/RateWidget.vue'
 import ProductTeaserSection from '@/components/home/ProductTeaserSection.vue'
 import PartnerBanksStrip from '@/components/home/PartnerBanksStrip.vue'
+import ReviewCtaSection from '@/components/home/ReviewCtaSection.vue'
 
 const { t } = useI18n()
 
@@ -66,6 +67,8 @@ onUnmounted(clearHead)
     />
 
     <PartnerBanksStrip />
+
+    <ReviewCtaSection />
   </div>
 </template>
 
