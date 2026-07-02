@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"sravni/parser/internal/model"
@@ -176,6 +178,14 @@ func (s *PG) UpsertRate(ctx context.Context, rw RateWrite) error {
 
 // UpsertProduct: транзакционный идемпотентный upsert продукта + replace-all сетки
 // + пересчёт агрегатов rate_min/rate_max из сетки (schema.md §9).
+//
+// Дедуп в рамках банка (не только источника): один и тот же продукт нередко
+// находится на нескольких URL банка (мультидоменность, повторные discovery-
+// ссылки на ту же страницу) — уникальность (source_url_id, external_key) в БД
+// этого не ловит и плодит дубли. Поэтому сначала ищем существующую строку по
+// (bank_id, category, external_key) по ВСЕМ источникам банка; если нашли —
+// обновляем её (и переносим source_url_id на актуальный источник), а не
+// вставляем новую.
 func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -189,63 +199,147 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 	if err != nil {
 		return 0, fmt.Errorf("store: marshal features: %w", err)
 	}
-
-	// 1) UPSERT по (source_url_id, external_key).
-	//    status НЕ перетирается на update — уважаем администраторский статус (§8.2).
-	//    При INSERT status = 'draft' (утверждённое решение: парсер вставляет как draft).
-	//
-	//    Приоритет администратора (locked_fields): поля, которые редактор задал
-	//    через админку, помечаются в products.locked_fields (jsonb-массив имён).
-	//    Парсер их НЕ перетирает:
-	//      - category/subcategory: если поле залочено — оставляем значение из БД;
-	//      - features (метки): всегда объединяем (union), новые метки добавляются;
-    //        при залоченных features значения администратора имеют приоритет
-	//        (EXCLUDED || products → правый операнд побеждает), иначе свежий
-	//        результат парсера побеждает, но ранее известные метки не теряются.
-	const upsertSQL = `
-		INSERT INTO products
-			(bank_id, source_url_id, external_key, category, name_ru, name_tg,
-			 description_ru, description_tg, status, currency,
-			 rate_min, rate_max, amount_min, amount_max, term_min, term_max,
-			 features, parsed_at, subcategory, created_at, updated_at)
-		VALUES
-			($1, $2, $3, $4, $5, $6,
-			 $7, $8, 'draft', $9,
-			 $10, $11, $12, $13, $14, $15,
-			 $16, $17, $18, now(), now())
-		ON CONFLICT (source_url_id, external_key) DO UPDATE SET
-			bank_id        = EXCLUDED.bank_id,
-			category       = CASE WHEN products.locked_fields @> '"category"'::jsonb
-			                      THEN products.category ELSE EXCLUDED.category END,
-			subcategory    = CASE WHEN products.locked_fields @> '"subcategory"'::jsonb
-			                      THEN products.subcategory ELSE EXCLUDED.subcategory END,
-			features       = CASE WHEN products.locked_fields @> '"features"'::jsonb
-			                      THEN COALESCE(EXCLUDED.features, '{}'::jsonb) || COALESCE(products.features, '{}'::jsonb)
-			                      ELSE COALESCE(products.features, '{}'::jsonb) || COALESCE(EXCLUDED.features, '{}'::jsonb) END,
-			name_ru        = EXCLUDED.name_ru,
-			name_tg        = EXCLUDED.name_tg,
-			description_ru = EXCLUDED.description_ru,
-			description_tg = EXCLUDED.description_tg,
-			currency       = EXCLUDED.currency,
-			rate_min       = EXCLUDED.rate_min,
-			rate_max       = EXCLUDED.rate_max,
-			amount_min     = EXCLUDED.amount_min,
-			amount_max     = EXCLUDED.amount_max,
-			term_min       = EXCLUDED.term_min,
-			term_max       = EXCLUDED.term_max,
-			parsed_at      = EXCLUDED.parsed_at,
-			updated_at     = now()
-		RETURNING id`
-
-	var productID int64
-	err = tx.QueryRow(ctx, upsertSQL,
-		pw.BankID, pw.SourceURLID, pw.ExternalKey, string(p.Category),
-		p.NameRU, p.NameTG, p.DescriptionRU, p.DescriptionTG, string(p.Currency),
-		p.RateMin, p.RateMax, p.AmountMin, p.AmountMax, p.TermMin, p.TermMax,
-		featuresJSON, pw.ParsedAt, p.Subcategory,
-	).Scan(&productID)
+	keyCondRU, err := json.Marshal(p.KeyConditionsRU)
 	if err != nil {
-		return 0, fmt.Errorf("store: upsert продукта: %w", err)
+		return 0, fmt.Errorf("store: marshal key_conditions_ru: %w", err)
+	}
+	keyCondTG, err := json.Marshal(p.KeyConditionsTG)
+	if err != nil {
+		return 0, fmt.Errorf("store: marshal key_conditions_tg: %w", err)
+	}
+	docsRU, err := json.Marshal(p.DocumentsRU)
+	if err != nil {
+		return 0, fmt.Errorf("store: marshal documents_ru: %w", err)
+	}
+	docsTG, err := json.Marshal(p.DocumentsTG)
+	if err != nil {
+		return 0, fmt.Errorf("store: marshal documents_tg: %w", err)
+	}
+	var sourceURL *string
+	if pw.SourceURL != "" {
+		sourceURL = &pw.SourceURL
+	}
+
+	// 0) Поиск существующей строки того же продукта в рамках банка (по всем
+	//    source_url_id), а не только по текущему источнику задачи.
+	var existingID int64
+	found := true
+	const findSQL = `
+		SELECT id FROM products
+		WHERE bank_id = $1 AND category = $2 AND external_key = $3
+		ORDER BY id LIMIT 1`
+	if err := tx.QueryRow(ctx, findSQL, pw.BankID, string(p.Category), pw.ExternalKey).Scan(&existingID); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return 0, fmt.Errorf("store: поиск продукта банка: %w", err)
+		}
+		found = false
+	}
+
+	// Приоритет администратора (locked_fields): поля, которые редактор задал
+	// через админку, помечаются в products.locked_fields (jsonb-массив имён).
+	// Парсер их НЕ перетирает:
+	//   - category/subcategory/is_special: если поле залочено — оставляем значение из БД;
+	//   - features (метки): всегда объединяем (union), новые метки добавляются;
+	//     при залоченных features значения администратора имеют приоритет,
+	//     иначе свежий результат парсера побеждает, но ранее известные метки не теряются.
+	// status НЕ перетирается на update — уважаем администраторский статус (§8.2).
+	// При INSERT status = 'draft' (утверждённое решение: парсер вставляет как draft).
+	var productID int64
+	if found {
+		const updateSQL = `
+			UPDATE products SET
+				source_url_id  = $2,
+				category       = CASE WHEN locked_fields @> '"category"'::jsonb THEN category ELSE $3 END,
+				subcategory    = CASE WHEN locked_fields @> '"subcategory"'::jsonb THEN subcategory ELSE $4 END,
+				is_special     = CASE WHEN locked_fields @> '"is_special"'::jsonb THEN is_special ELSE $5 END,
+				features       = CASE WHEN locked_fields @> '"features"'::jsonb
+				                      THEN COALESCE($6::jsonb, '{}'::jsonb) || COALESCE(features, '{}'::jsonb)
+				                      ELSE COALESCE(features, '{}'::jsonb) || COALESCE($6::jsonb, '{}'::jsonb) END,
+				name_ru        = $7,
+				name_tg        = $8,
+				description_ru = $9,
+				description_tg = $10,
+				currency       = $11,
+				rate_min       = $12,
+				rate_max       = $13,
+				amount_min     = $14,
+				amount_max     = $15,
+				term_min       = $16,
+				term_max       = $17,
+				parsed_at      = $18,
+				key_conditions_ru = $19,
+				key_conditions_tg = $20,
+				documents_ru      = $21,
+				documents_tg      = $22,
+				source_url        = $23,
+				updated_at     = now()
+			WHERE id = $1
+			RETURNING id`
+		err = tx.QueryRow(ctx, updateSQL,
+			existingID, pw.SourceURLID, string(p.Category), p.Subcategory, p.IsSpecial, featuresJSON,
+			p.NameRU, p.NameTG, p.DescriptionRU, p.DescriptionTG, string(p.Currency),
+			p.RateMin, p.RateMax, p.AmountMin, p.AmountMax, p.TermMin, p.TermMax, pw.ParsedAt,
+			keyCondRU, keyCondTG, docsRU, docsTG, sourceURL,
+		).Scan(&productID)
+		if err != nil {
+			return 0, fmt.Errorf("store: обновление продукта (bank dedup): %w", err)
+		}
+	} else {
+		const insertSQL = `
+			INSERT INTO products
+				(bank_id, source_url_id, external_key, category, name_ru, name_tg,
+				 description_ru, description_tg, status, currency,
+				 rate_min, rate_max, amount_min, amount_max, term_min, term_max,
+				 features, parsed_at, subcategory, is_special,
+				 key_conditions_ru, key_conditions_tg, documents_ru, documents_tg, source_url,
+				 created_at, updated_at)
+			VALUES
+				($1, $2, $3, $4, $5, $6,
+				 $7, $8, 'draft', $9,
+				 $10, $11, $12, $13, $14, $15,
+				 $16, $17, $18, $19,
+				 $20, $21, $22, $23, $24,
+				 now(), now())
+			ON CONFLICT (source_url_id, external_key) DO UPDATE SET
+				bank_id        = EXCLUDED.bank_id,
+				category       = CASE WHEN products.locked_fields @> '"category"'::jsonb
+				                      THEN products.category ELSE EXCLUDED.category END,
+				subcategory    = CASE WHEN products.locked_fields @> '"subcategory"'::jsonb
+				                      THEN products.subcategory ELSE EXCLUDED.subcategory END,
+				is_special     = CASE WHEN products.locked_fields @> '"is_special"'::jsonb
+				                      THEN products.is_special ELSE EXCLUDED.is_special END,
+				features       = CASE WHEN products.locked_fields @> '"features"'::jsonb
+				                      THEN COALESCE(EXCLUDED.features, '{}'::jsonb) || COALESCE(products.features, '{}'::jsonb)
+				                      ELSE COALESCE(products.features, '{}'::jsonb) || COALESCE(EXCLUDED.features, '{}'::jsonb) END,
+				name_ru        = EXCLUDED.name_ru,
+				name_tg        = EXCLUDED.name_tg,
+				description_ru = EXCLUDED.description_ru,
+				description_tg = EXCLUDED.description_tg,
+				currency       = EXCLUDED.currency,
+				rate_min       = EXCLUDED.rate_min,
+				rate_max       = EXCLUDED.rate_max,
+				amount_min     = EXCLUDED.amount_min,
+				amount_max     = EXCLUDED.amount_max,
+				term_min       = EXCLUDED.term_min,
+				term_max       = EXCLUDED.term_max,
+				parsed_at      = EXCLUDED.parsed_at,
+				key_conditions_ru = EXCLUDED.key_conditions_ru,
+				key_conditions_tg = EXCLUDED.key_conditions_tg,
+				documents_ru      = EXCLUDED.documents_ru,
+				documents_tg      = EXCLUDED.documents_tg,
+				source_url        = EXCLUDED.source_url,
+				updated_at     = now()
+			RETURNING id`
+		err = tx.QueryRow(ctx, insertSQL,
+			pw.BankID, pw.SourceURLID, pw.ExternalKey, string(p.Category),
+			p.NameRU, p.NameTG, p.DescriptionRU, p.DescriptionTG, string(p.Currency),
+			p.RateMin, p.RateMax, p.AmountMin, p.AmountMax, p.TermMin, p.TermMax,
+			featuresJSON, pw.ParsedAt, p.Subcategory, p.IsSpecial,
+			keyCondRU, keyCondTG, docsRU, docsTG, sourceURL,
+		).Scan(&productID)
+		if err != nil {
+			return 0, fmt.Errorf("store: upsert продукта: %w", err)
+		}
 	}
 
 	// 2) Replace-all тарифной сетки (источник истины — rate_tiers AI).

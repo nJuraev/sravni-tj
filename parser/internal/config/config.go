@@ -56,6 +56,11 @@ type Config struct {
 	// Concurrency — максимум одновременно обрабатываемых задач.
 	Concurrency int
 
+	// BankIDs — опциональный фильтр по банкам (PARSER_BANK_IDS, CSV id).
+	// Пусто (по умолчанию) = без фильтра, обрабатываются все активные задачи.
+	// Только для ручных точечных прогонов/отладки — не меняет данные в БД.
+	BankIDs []int64
+
 	// HTTPTimeout — таймаут на скрейп одной страницы.
 	HTTPTimeout time.Duration
 	// AITimeout — таймаут на один вызов AI.
@@ -75,6 +80,7 @@ func Load() (*Config, error) {
 		AIModel:         os.Getenv("AI_MODEL"),
 		MaxTokens:       parseInt(os.Getenv("PARSER_MAX_TOKENS"), 8000),
 		Concurrency:     parseInt(os.Getenv("PARSER_CONCURRENCY"), 1),
+		BankIDs:         parseInt64List(os.Getenv("PARSER_BANK_IDS")),
 		HTTPTimeout:     time.Duration(parseInt(os.Getenv("PARSER_HTTP_TIMEOUT_SEC"), 60)) * time.Second,
 		AITimeout:       time.Duration(parseInt(os.Getenv("PARSER_AI_TIMEOUT_SEC"), 120)) * time.Second,
 	}
@@ -140,4 +146,25 @@ func parseInt(s string, def int) int {
 		return def
 	}
 	return v
+}
+
+// parseInt64List разбирает CSV-список id ("1,5" → [1,5]). Пустая/некорректная
+// строка → nil (без фильтра). Некорректные элементы молча пропускаются.
+func parseInt64List(s string) []int64 {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	var out []int64
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		v, err := strconv.ParseInt(part, 10, 64)
+		if err != nil {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
 }

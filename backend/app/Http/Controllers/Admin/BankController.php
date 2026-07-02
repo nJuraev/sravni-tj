@@ -112,6 +112,8 @@ class BankController extends Controller
             'phone' => ['nullable', 'string', 'max:150'],
             'address_ru' => ['nullable', 'string', 'max:500'],
             'address_tg' => ['nullable', 'string', 'max:500'],
+            'about_ru' => ['nullable', 'string', 'max:2000'],
+            'about_tg' => ['nullable', 'string', 'max:2000'],
             'logo_url' => ['nullable', 'string', 'max:500'],
         ]);
     }

@@ -1,33 +1,50 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import {
+  NConfigProvider,
+  NCard,
+  NForm,
+  NFormItem,
+  NInput,
+  NButton,
+  NAlert,
+  NIcon,
+  type FormInst,
+} from 'naive-ui'
+import { LockClosedOutline } from '@vicons/ionicons5'
 import { useAdminStore } from '@/stores/admin'
 import { ApiError } from '@/api/errors'
-import BaseButton from '@/components/ui/BaseButton.vue'
-import '@/assets/styles/admin.css'
+import { adminThemeOverrides } from './theme'
 
 const admin = useAdminStore()
 const router = useRouter()
 const route = useRoute()
 
-const email = ref('')
-const password = ref('')
+const formRef = ref<FormInst | null>(null)
+const model = ref({ email: '', password: '' })
 const error = ref('')
 const loading = ref(false)
 
+const rules = {
+  email: { required: true, message: 'Введите email', trigger: ['blur', 'input'] },
+  password: { required: true, message: 'Введите пароль', trigger: ['blur', 'input'] },
+}
+
 async function onSubmit() {
   error.value = ''
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   loading.value = true
   try {
-    await admin.login(email.value, password.value)
+    await admin.login(model.value.email, model.value.password)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : null
     router.push(redirect ?? { name: 'admin-banks' })
   } catch (e) {
-    if (e instanceof ApiError) {
-      error.value = e.fieldErrors.email?.[0] ?? e.message
-    } else {
-      error.value = 'Не удалось войти.'
-    }
+    error.value = e instanceof ApiError ? (e.fieldErrors.email?.[0] ?? e.message) : 'Не удалось войти.'
   } finally {
     loading.value = false
   }
@@ -35,40 +52,44 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="login">
-    <form class="login__card adm-card" @submit.prevent="onSubmit">
-      <div class="login__brand">Sravni · Админка</div>
-      <p class="login__hint">Войдите для управления данными</p>
+  <n-config-provider :theme-overrides="adminThemeOverrides">
+    <div class="login">
+      <n-card class="login__card" :bordered="false">
+        <div class="login__brand">
+          <n-icon size="28" color="#0050C8"><LockClosedOutline /></n-icon>
+          <div>
+            <div class="login__title">Sravni · Админка</div>
+            <div class="login__hint">Вход для управления данными</div>
+          </div>
+        </div>
 
-      <div class="adm-field">
-        <label class="adm-field__label" for="login-email">Email</label>
-        <input
-          id="login-email"
-          v-model="email"
-          class="adm-input"
-          type="email"
-          autocomplete="username"
-          required
-        />
-      </div>
+        <n-form ref="formRef" :model="model" :rules="rules" @submit.prevent="onSubmit">
+          <n-form-item label="Email" path="email">
+            <n-input
+              v-model:value="model.email"
+              placeholder="admin@sravni.tj"
+              @keydown.enter.prevent="onSubmit"
+            />
+          </n-form-item>
+          <n-form-item label="Пароль" path="password">
+            <n-input
+              v-model:value="model.password"
+              type="password"
+              show-password-on="click"
+              placeholder="••••••••"
+              @keydown.enter.prevent="onSubmit"
+            />
+          </n-form-item>
 
-      <div class="adm-field">
-        <label class="adm-field__label" for="login-password">Пароль</label>
-        <input
-          id="login-password"
-          v-model="password"
-          class="adm-input"
-          type="password"
-          autocomplete="current-password"
-          required
-        />
-      </div>
+          <n-alert v-if="error" type="error" style="margin-bottom: 16px">{{ error }}</n-alert>
 
-      <p v-if="error" class="adm-alert">{{ error }}</p>
-
-      <BaseButton type="submit" block :loading="loading">Войти</BaseButton>
-    </form>
-  </div>
+          <n-button type="primary" block :loading="loading" attr-type="submit" @click="onSubmit">
+            Войти
+          </n-button>
+        </n-form>
+      </n-card>
+    </div>
+  </n-config-provider>
 </template>
 
 <style scoped>
@@ -77,26 +98,28 @@ async function onSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-4);
-  background: var(--color-bg-offwhite);
+  padding: 16px;
+  background: linear-gradient(135deg, #eaf1fb 0%, #f6f7f9 100%);
 }
 .login__card {
   width: 100%;
-  max-width: 380px;
-  padding: var(--space-7) var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  max-width: 400px;
+  box-shadow: 0 12px 40px rgba(0, 40, 100, 0.12);
+  border-radius: 14px;
 }
 .login__brand {
-  font-family: var(--font-display);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.login__title {
   font-weight: 700;
-  font-size: var(--fs-xl);
-  color: var(--color-primary);
+  font-size: 18px;
+  color: #0050c8;
 }
 .login__hint {
-  color: var(--color-text-muted);
-  font-size: var(--fs-sm);
-  margin-top: calc(-1 * var(--space-2));
+  font-size: 13px;
+  color: #999;
 }
 </style>

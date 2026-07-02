@@ -10,7 +10,7 @@ use App\Models\Bank;
 use Illuminate\Http\JsonResponse;
 
 /**
- * Список банков (только чтение). Контракт: список не пагинируется (до ~20 банков).
+ * Банки (только чтение). Контракт: список не пагинируется (до ~20 банков).
  */
 class BankController extends Controller
 {
@@ -27,6 +27,21 @@ class BankController extends Controller
 
         return response()->json([
             'data' => BankResource::collection($banks),
+        ]);
+    }
+
+    /**
+     * GET /api/banks/{bank} — публичная страница банка. 404 для неактивного/несуществующего.
+     */
+    public function show(int $bank): JsonResponse
+    {
+        $model = Bank::query()
+            ->active()
+            ->withReviewStats()
+            ->findOrFail($bank);
+
+        return response()->json([
+            'data' => new BankResource($model),
         ]);
     }
 }

@@ -47,6 +47,9 @@ export interface Bank {
   phone?: string | null
   address_ru?: string | null
   address_tg?: string | null
+  /** Короткая справка о банке для публичной страницы /bank/:id. */
+  about_ru?: string | null
+  about_tg?: string | null
   contact_email?: string | null
   /** Средний балл по одобренным отзывам; null/undefined, если оценок нет. */
   rating_avg?: number | null
@@ -69,6 +72,14 @@ export interface Product {
   name_tg: string | null
   description_ru: string | null
   description_tg: string | null
+  /** Буллеты условий сверх ставки/суммы/срока (предоплата, комиссия по сегментам…). */
+  key_conditions_ru?: string[] | null
+  key_conditions_tg?: string[] | null
+  /** Минимальный пакет документов. */
+  documents_ru?: string[] | null
+  documents_tg?: string[] | null
+  /** Ссылка на страницу именно этого продукта на сайте банка. */
+  source_url?: string | null
   rate_min: number
   rate_max: number
   amount_min: number | null
@@ -99,6 +110,10 @@ export interface ProductResponse {
 
 export interface BankListResponse {
   data: Bank[]
+}
+
+export interface BankResponse {
+  data: Bank
 }
 
 /**
@@ -153,4 +168,35 @@ export interface LeadResponse {
 export interface ApiErrorBody {
   message: string
   errors?: Record<string, string[]>
+}
+
+/** `cash` — обмен валют в кассе банка; `transfer` — денежные переводы. */
+export type RateCategory = 'cash' | 'transfer'
+
+/** Операция КЛИЕНТА: `buy` — клиент покупает валюту, `sell` — продаёт банку. */
+export type RateOp = 'buy' | 'sell'
+
+/** GET /api/rates/best query. */
+export interface BestRateQuery {
+  currency: string
+  category: RateCategory
+  op: RateOp
+}
+
+/**
+ * Котировка одного банка по валюте+категории.
+ * buy — банк покупает валюту у клиента; sell — банк продаёт валюту клиенту.
+ * Любая сторона может быть null (банк не котирует эту операцию).
+ */
+export interface Rate {
+  bank: BankRef
+  currency: string
+  category: RateCategory
+  buy: number | null
+  sell: number | null
+  rate_date: string | null
+}
+
+export interface BestRateResponse {
+  data: Rate | null
 }

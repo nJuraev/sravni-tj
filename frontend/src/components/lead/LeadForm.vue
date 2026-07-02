@@ -5,6 +5,7 @@ import type { Product } from '@/types/api'
 import { api } from '@/api/client'
 import { ApiError } from '@/api/errors'
 import { useLocalizedField } from '@/composables/useLocalizedField'
+import { formatTajikPhone, tajikPhoneDigits, TAJIK_PHONE_DEFAULT } from '@/composables/useTajikPhoneMask'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseTextField from '@/components/ui/BaseTextField.vue'
 import BaseCheckbox from '@/components/ui/BaseCheckbox.vue'
@@ -17,8 +18,15 @@ const { name } = useLocalizedField()
 
 const form = reactive({
   full_name: '',
-  phone: '',
+  phone: TAJIK_PHONE_DEFAULT,
   consent: false,
+})
+
+const phoneModel = computed({
+  get: () => form.phone,
+  set: (v: string | number) => {
+    form.phone = formatTajikPhone(String(v))
+  },
 })
 
 const fieldErrors = reactive<Record<string, string | undefined>>({})
@@ -28,7 +36,10 @@ const success = ref(false)
 
 // Hard invariant (frontend.md §6): submit disabled until consent is checked.
 const canSubmit = computed(
-  () => form.consent && form.full_name.trim().length >= 2 && form.phone.trim().length >= 5,
+  () =>
+    form.consent &&
+    form.full_name.trim().length >= 2 &&
+    tajikPhoneDigits(form.phone).length === 9,
 )
 
 function clearErrors() {
@@ -69,7 +80,7 @@ async function submit() {
 
 function reset() {
   form.full_name = ''
-  form.phone = ''
+  form.phone = TAJIK_PHONE_DEFAULT
   form.consent = false
   success.value = false
   clearErrors()
@@ -108,7 +119,7 @@ function finish() {
         :error="fieldErrors.full_name"
       />
       <BaseTextField
-        v-model="form.phone"
+        v-model="phoneModel"
         type="tel"
         inputmode="tel"
         :label="t('lead.phone')"

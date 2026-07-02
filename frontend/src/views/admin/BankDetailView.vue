@@ -1,62 +1,51 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import {
+  NDataTable, NButton, NInput, NInputNumber, NSelect, NTag, NSpace, NModal, NCard,
+  NForm, NFormItem, NSwitch, NTabs, NTabPane, NCheckbox, NCheckboxGroup, NIcon,
+  NDescriptions, NDescriptionsItem, useMessage, useDialog, type DataTableColumns,
+} from 'naive-ui'
+import { AddOutline, ArrowBackOutline } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
 import type { AdminBank, AdminProduct, FeatureKey, ProductPayload } from '@/types/admin'
-import BaseButton from '@/components/ui/BaseButton.vue'
-import BaseModal from '@/components/ui/BaseModal.vue'
 
 const props = defineProps<{ id: number }>()
 const router = useRouter()
+const message = useMessage()
+const dialog = useDialog()
 
 const bank = ref<AdminBank | null>(null)
 const products = ref<AdminProduct[]>([])
 const loading = ref(true)
 const tab = ref<'products' | 'info'>('products')
 
-const STATUS_LABEL: Record<string, string> = {
-  active: 'активен', draft: 'черновик', hidden: 'скрыт', outdated: 'устарел',
-}
-const STATUS_BADGE: Record<string, string> = {
-  active: 'adm-badge--green', draft: 'adm-badge--amber', hidden: 'adm-badge--gray', outdated: 'adm-badge--red',
-}
 const FEATURE_KEYS: FeatureKey[] = ['online_application', 'no_guarantor', 'capitalization', 'replenishable']
 const FEATURE_LABEL: Record<FeatureKey, string> = {
-  online_application: 'Онлайн-заявка',
-  no_guarantor: 'Без поручителя',
-  capitalization: 'Капитализация',
-  replenishable: 'Пополняемый',
+  online_application: 'Онлайн-заявка', no_guarantor: 'Без поручителя',
+  capitalization: 'Капитализация', replenishable: 'Пополняемый',
+}
+const STATUS_META: Record<string, { label: string; type: 'success' | 'warning' | 'default' | 'error' }> = {
+  active: { label: 'активен', type: 'success' }, draft: { label: 'черновик', type: 'warning' },
+  hidden: { label: 'скрыт', type: 'default' }, outdated: { label: 'устарел', type: 'error' },
 }
 
-const modalOpen = ref(false)
+const showModal = ref(false)
 const editing = ref<AdminProduct | null>(null)
 const saving = ref(false)
-const formError = ref('')
-const fieldErrors = ref<Record<string, string[]>>({})
+const fieldErrors = reactive<Record<string, string>>({})
+const featureList = ref<FeatureKey[]>([])
 
 function emptyForm(): ProductPayload {
   return {
-    bank_id: props.id,
-    category: 'credit',
-    subcategory: null,
-    is_special: false,
-    status: 'draft',
-    currency: 'TJS',
-    name_ru: '',
-    name_tg: '',
-    description_ru: '',
-    description_tg: '',
-    rate_min: 0,
-    rate_max: 0,
-    amount_min: null,
-    amount_max: null,
-    term_min: null,
-    term_max: null,
-    features: {},
+    bank_id: props.id, category: 'credit', subcategory: null, is_special: false,
+    status: 'draft', currency: 'TJS', name_ru: '', name_tg: '', description_ru: '',
+    description_tg: '', rate_min: 0, rate_max: 0, amount_min: null, amount_max: null,
+    term_min: null, term_max: null, features: {},
   }
 }
-const form = ref<ProductPayload>(emptyForm())
+const form = reactive<ProductPayload>(emptyForm())
 
 async function load() {
   loading.value = true
@@ -70,54 +59,50 @@ async function load() {
 }
 onMounted(load)
 
+function clearErrors() { for (const k of Object.keys(fieldErrors)) delete fieldErrors[k] }
+
+function syncFeatures() {
+  form.features = Object.fromEntries(featureList.value.map((k) => [k, true]))
+}
+
 function openCreate() {
   editing.value = null
-  form.value = emptyForm()
-  fieldErrors.value = {}
-  formError.value = ''
-  modalOpen.value = true
+  Object.assign(form, emptyForm())
+  featureList.value = []
+  clearErrors()
+  showModal.value = true
 }
 function openEdit(p: AdminProduct) {
   editing.value = p
-  form.value = {
-    bank_id: props.id,
-    category: p.category,
-    subcategory: p.subcategory,
-    is_special: p.is_special,
-    status: p.status,
-    currency: p.currency,
-    name_ru: p.name_ru ?? '',
-    name_tg: p.name_tg ?? '',
-    description_ru: p.description_ru ?? '',
-    description_tg: p.description_tg ?? '',
-    rate_min: p.rate_min ?? 0,
-    rate_max: p.rate_max ?? 0,
-    amount_min: p.amount_min,
-    amount_max: p.amount_max,
-    term_min: p.term_min,
-    term_max: p.term_max,
-    features: { ...p.features },
-  }
-  fieldErrors.value = {}
-  formError.value = ''
-  modalOpen.value = true
+  Object.assign(form, {
+    bank_id: props.id, category: p.category, subcategory: p.subcategory, is_special: p.is_special,
+    status: p.status, currency: p.currency, name_ru: p.name_ru ?? '', name_tg: p.name_tg ?? '',
+    description_ru: p.description_ru ?? '', description_tg: p.description_tg ?? '',
+    rate_min: p.rate_min ?? 0, rate_max: p.rate_max ?? 0, amount_min: p.amount_min,
+    amount_max: p.amount_max, term_min: p.term_min, term_max: p.term_max, features: { ...p.features },
+  })
+  featureList.value = FEATURE_KEYS.filter((k) => p.features[k])
+  clearErrors()
+  showModal.value = true
 }
 
 async function save() {
   saving.value = true
-  formError.value = ''
-  fieldErrors.value = {}
+  clearErrors()
+  syncFeatures()
   try {
-    if (editing.value) await adminApi.updateProduct(editing.value.id, form.value)
-    else await adminApi.createProduct(form.value)
-    modalOpen.value = false
+    if (editing.value) await adminApi.updateProduct(editing.value.id, { ...form })
+    else await adminApi.createProduct({ ...form })
+    message.success(editing.value ? 'Продукт обновлён' : 'Продукт создан')
+    showModal.value = false
     await load()
   } catch (e) {
     if (e instanceof ApiError && e.isValidation) {
-      fieldErrors.value = e.fieldErrors
-      formError.value = Object.values(e.fieldErrors)[0]?.[0] ?? 'Проверьте поля формы.'
-    } else if (e instanceof ApiError) formError.value = e.message
-    else formError.value = 'Ошибка сохранения.'
+      for (const [k, v] of Object.entries(e.fieldErrors)) fieldErrors[k] = v[0]
+      message.error('Проверьте поля формы')
+    } else {
+      message.error(e instanceof ApiError ? e.message : 'Ошибка сохранения')
+    }
   } finally {
     saving.value = false
   }
@@ -126,253 +111,165 @@ async function save() {
 async function toggle(p: AdminProduct) {
   try {
     const res = await adminApi.toggleProduct(p.id)
-    const idx = products.value.findIndex((x) => x.id === p.id)
-    if (idx >= 0) products.value[idx] = res.data
+    const i = products.value.findIndex((x) => x.id === p.id)
+    if (i >= 0) products.value[i] = res.data
+    message.success(res.data.status === 'active' ? 'Включён' : 'Отключён')
   } catch (e) {
-    alert(e instanceof ApiError ? e.message : 'Не удалось переключить.')
+    message.error(e instanceof ApiError ? e.message : 'Не удалось переключить')
   }
 }
 
-async function remove(p: AdminProduct) {
-  if (!confirm(`Удалить продукт «${p.name_ru ?? p.name_tg}»?`)) return
-  try {
-    await adminApi.deleteProduct(p.id)
-    await load()
-  } catch (e) {
-    alert(e instanceof ApiError ? e.message : 'Не удалось удалить.')
-  }
+function remove(p: AdminProduct) {
+  dialog.warning({
+    title: 'Удалить продукт', content: `Удалить «${p.name_ru ?? p.name_tg}»?`,
+    positiveText: 'Удалить', negativeText: 'Отмена',
+    onPositiveClick: async () => {
+      try { await adminApi.deleteProduct(p.id); message.success('Удалён'); await load() }
+      catch (e) { message.error(e instanceof ApiError ? e.message : 'Не удалось удалить') }
+    },
+  })
 }
 
-function err(field: string): string {
-  return fieldErrors.value[field]?.[0] ?? ''
-}
+const categoryOptions = [
+  { label: 'Кредит', value: 'credit' }, { label: 'Депозит', value: 'deposit' }, { label: 'Рассрочка', value: 'installment' },
+]
+const currencyOptions = [{ label: 'TJS', value: 'TJS' }, { label: 'USD', value: 'USD' }, { label: 'EUR', value: 'EUR' }]
+const statusOptions = [
+  { label: 'Черновик', value: 'draft' }, { label: 'Активен', value: 'active' },
+  { label: 'Скрыт', value: 'hidden' }, { label: 'Устарел', value: 'outdated' },
+]
+
+const columns: DataTableColumns<AdminProduct> = [
+  {
+    title: 'Название', key: 'name',
+    render: (p) => h(NSpace, { align: 'center', size: 6 }, () => [
+      h('strong', p.name_ru ?? p.name_tg ?? '—'),
+      p.is_special ? h(NTag, { size: 'small', type: 'info', bordered: false }, () => 'спец') : null,
+      p.locked_fields?.length ? h(NTag, { size: 'small', type: 'warning', bordered: false }, () => 'закреплено') : null,
+    ]),
+  },
+  { title: 'Категория', key: 'category', width: 110 },
+  { title: 'Валюта', key: 'currency', width: 80 },
+  { title: 'Ставка', key: 'rate', width: 110, render: (p) => `${p.rate_min}–${p.rate_max}%` },
+  {
+    title: 'Статус', key: 'status', width: 110,
+    render: (p) => h(NTag, { size: 'small', type: STATUS_META[p.status]?.type ?? 'default', bordered: false },
+      () => STATUS_META[p.status]?.label ?? p.status),
+  },
+  {
+    title: '', key: 'actions', width: 270, align: 'right',
+    render: (p) => h(NSpace, { justify: 'end', size: 8 }, () => [
+      h(NButton, { size: 'small', type: p.status === 'active' ? 'default' : 'primary', secondary: true, onClick: () => toggle(p) },
+        () => (p.status === 'active' ? 'Откл.' : 'Вкл.')),
+      h(NButton, { size: 'small', quaternary: true, onClick: () => openEdit(p) }, () => 'Изм.'),
+      h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => remove(p) }, () => 'Удалить'),
+    ]),
+  },
+]
 </script>
 
 <template>
   <div>
-    <div class="adm__head">
+    <div class="head">
       <div>
-        <BaseButton variant="ghost" size="sm" @click="router.push({ name: 'admin-banks' })">← Банки</BaseButton>
-        <h1 class="adm__title">{{ bank?.name_ru ?? '…' }}</h1>
+        <n-button quaternary size="small" @click="router.push({ name: 'admin-banks' })">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
+          Банки
+        </n-button>
+        <h1 class="head__title">{{ bank?.name_ru ?? '…' }}</h1>
       </div>
-      <BaseButton v-if="tab === 'products'" @click="openCreate">+ Продукт</BaseButton>
+      <n-button v-if="tab === 'products'" type="primary" @click="openCreate">
+        <template #icon><n-icon><AddOutline /></n-icon></template>
+        Продукт
+      </n-button>
     </div>
 
-    <div class="adm-tabs">
-      <button class="adm-tab" :class="{ 'adm-tab--active': tab === 'products' }" @click="tab = 'products'">
-        Продукты ({{ products.length }})
-      </button>
-      <button class="adm-tab" :class="{ 'adm-tab--active': tab === 'info' }" @click="tab = 'info'">
-        Информация
-      </button>
-    </div>
+    <n-tabs v-model:value="tab" type="line" animated>
+      <n-tab-pane name="products" :tab="`Продукты (${products.length})`">
+        <n-card :bordered="false">
+          <n-data-table :columns="columns" :data="products" :loading="loading" :row-key="(p: AdminProduct) => p.id" />
+        </n-card>
+      </n-tab-pane>
 
-    <!-- Products tab -->
-    <div v-if="tab === 'products'" class="adm-card">
-      <div v-if="loading" class="adm-empty">Загрузка…</div>
-      <div v-else-if="!products.length" class="adm-empty">У банка нет продуктов</div>
-      <table v-else class="adm-table">
-        <thead>
-          <tr>
-            <th>Название</th>
-            <th>Категория</th>
-            <th>Валюта</th>
-            <th>Ставка</th>
-            <th>Статус</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in products" :key="p.id">
-            <td>
-              <strong>{{ p.name_ru ?? p.name_tg }}</strong>
-              <span v-if="p.is_special" class="adm-badge adm-badge--blue" style="margin-left: 6px">спец</span>
-              <span
-                v-if="p.locked_fields?.length"
-                class="adm-badge adm-badge--amber"
-                style="margin-left: 6px"
-                title="Категория и метки закреплены — парсер их не перезапишет"
-              >закреплено</span>
-            </td>
-            <td>{{ p.category }}</td>
-            <td>{{ p.currency }}</td>
-            <td>{{ p.rate_min }}–{{ p.rate_max }}%</td>
-            <td>
-              <span class="adm-badge" :class="STATUS_BADGE[p.status]">{{ STATUS_LABEL[p.status] }}</span>
-            </td>
-            <td>
-              <div class="adm-table__actions">
-                <BaseButton
-                  size="sm"
-                  :variant="p.status === 'active' ? 'secondary' : 'primary'"
-                  @click="toggle(p)"
-                >
-                  {{ p.status === 'active' ? 'Откл.' : 'Вкл.' }}
-                </BaseButton>
-                <BaseButton size="sm" variant="ghost" @click="openEdit(p)">Изм.</BaseButton>
-                <BaseButton size="sm" variant="danger" @click="remove(p)">Удалить</BaseButton>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <n-tab-pane name="info" tab="Информация">
+        <n-card :bordered="false">
+          <n-descriptions label-placement="left" :column="2" bordered>
+            <n-descriptions-item label="Slug"><code>{{ bank?.slug }}</code></n-descriptions-item>
+            <n-descriptions-item label="Статус">{{ bank?.status }}</n-descriptions-item>
+            <n-descriptions-item label="Партнёр">{{ bank?.is_partner ? 'да' : 'нет' }}</n-descriptions-item>
+            <n-descriptions-item label="Email">{{ bank?.contact_email ?? '—' }}</n-descriptions-item>
+            <n-descriptions-item label="Сайт">{{ bank?.website ?? '—' }}</n-descriptions-item>
+            <n-descriptions-item label="Телефон">{{ bank?.phone ?? '—' }}</n-descriptions-item>
+            <n-descriptions-item label="Адрес" :span="2">{{ bank?.address_ru ?? '—' }}</n-descriptions-item>
+            <n-descriptions-item label="Заявок">{{ bank?.leads_count ?? 0 }}</n-descriptions-item>
+          </n-descriptions>
+        </n-card>
+      </n-tab-pane>
+    </n-tabs>
 
-    <!-- Info tab -->
-    <div v-else class="adm-card" style="padding: var(--space-5)">
-      <dl class="info">
-        <div><dt>Slug</dt><dd><code>{{ bank?.slug }}</code></dd></div>
-        <div><dt>Статус</dt><dd>{{ bank?.status }}</dd></div>
-        <div><dt>Партнёр</dt><dd>{{ bank?.is_partner ? 'да' : 'нет' }}</dd></div>
-        <div><dt>Email</dt><dd>{{ bank?.contact_email ?? '—' }}</dd></div>
-        <div><dt>Сайт</dt><dd>{{ bank?.website ?? '—' }}</dd></div>
-        <div><dt>Телефон</dt><dd>{{ bank?.phone ?? '—' }}</dd></div>
-        <div><dt>Адрес</dt><dd>{{ bank?.address_ru ?? '—' }}</dd></div>
-        <div><dt>Заявок</dt><dd>{{ bank?.leads_count ?? 0 }}</dd></div>
-      </dl>
-      <div style="margin-top: var(--space-4)">
-        <BaseButton variant="secondary" @click="router.push({ name: 'admin-banks' })">
-          Редактировать в списке банков
-        </BaseButton>
-      </div>
-    </div>
-
-    <!-- Product modal -->
-    <BaseModal :open="modalOpen" :title="editing ? 'Редактировать продукт' : 'Новый продукт'" @close="modalOpen = false">
-      <form class="adm-form" @submit.prevent="save">
-        <div class="adm-grid-2">
-          <div class="adm-field">
-            <label class="adm-field__label">Название (RU)</label>
-            <input v-model="form.name_ru" class="adm-input" :class="{ 'adm-input--error': err('name_ru') }" />
-            <span v-if="err('name_ru')" class="adm-field__error">{{ err('name_ru') }}</span>
-          </div>
-          <div class="adm-field">
-            <label class="adm-field__label">Название (TG)</label>
-            <input v-model="form.name_tg" class="adm-input" />
-          </div>
+    <n-modal
+      v-model:show="showModal" preset="card" style="width: 680px"
+      :title="editing ? 'Редактировать продукт' : 'Новый продукт'"
+    >
+      <n-form label-placement="top">
+        <div class="grid2">
+          <n-form-item label="Название (RU)" :validation-status="fieldErrors.name_ru ? 'error' : undefined" :feedback="fieldErrors.name_ru">
+            <n-input v-model:value="form.name_ru" />
+          </n-form-item>
+          <n-form-item label="Название (TG)">
+            <n-input v-model:value="form.name_tg" />
+          </n-form-item>
         </div>
-
-        <div class="adm-grid-2">
-          <div class="adm-field">
-            <label class="adm-field__label">Категория</label>
-            <select v-model="form.category" class="adm-select">
-              <option value="credit">Кредит</option>
-              <option value="deposit">Депозит</option>
-              <option value="installment">Рассрочка</option>
-            </select>
-          </div>
-          <div class="adm-field">
-            <label class="adm-field__label">Валюта</label>
-            <select v-model="form.currency" class="adm-select">
-              <option value="TJS">TJS</option>
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-            </select>
-          </div>
+        <div class="grid3">
+          <n-form-item label="Категория"><n-select v-model:value="form.category" :options="categoryOptions" /></n-form-item>
+          <n-form-item label="Валюта"><n-select v-model:value="form.currency" :options="currencyOptions" /></n-form-item>
+          <n-form-item label="Статус"><n-select v-model:value="form.status" :options="statusOptions" /></n-form-item>
         </div>
-
-        <div class="adm-grid-2">
-          <div class="adm-field">
-            <label class="adm-field__label">Ставка мин, %</label>
-            <input v-model.number="form.rate_min" class="adm-input" type="number" step="0.001" :class="{ 'adm-input--error': err('rate_min') }" />
-            <span v-if="err('rate_min')" class="adm-field__error">{{ err('rate_min') }}</span>
-          </div>
-          <div class="adm-field">
-            <label class="adm-field__label">Ставка макс, %</label>
-            <input v-model.number="form.rate_max" class="adm-input" type="number" step="0.001" :class="{ 'adm-input--error': err('rate_max') }" />
-            <span v-if="err('rate_max')" class="adm-field__error">{{ err('rate_max') }}</span>
-          </div>
+        <div class="grid2">
+          <n-form-item label="Ставка мин, %" :validation-status="fieldErrors.rate_min ? 'error' : undefined" :feedback="fieldErrors.rate_min">
+            <n-input-number v-model:value="form.rate_min" :min="0" :max="100" :step="0.1" style="width: 100%" />
+          </n-form-item>
+          <n-form-item label="Ставка макс, %" :validation-status="fieldErrors.rate_max ? 'error' : undefined" :feedback="fieldErrors.rate_max">
+            <n-input-number v-model:value="form.rate_max" :min="0" :max="100" :step="0.1" style="width: 100%" />
+          </n-form-item>
         </div>
-
-        <div class="adm-grid-2">
-          <div class="adm-field">
-            <label class="adm-field__label">Сумма мин</label>
-            <input v-model.number="form.amount_min" class="adm-input" type="number" />
-          </div>
-          <div class="adm-field">
-            <label class="adm-field__label">Сумма макс</label>
-            <input v-model.number="form.amount_max" class="adm-input" type="number" />
-          </div>
+        <div class="grid2">
+          <n-form-item label="Сумма мин"><n-input-number v-model:value="form.amount_min" :min="0" style="width: 100%" clearable /></n-form-item>
+          <n-form-item label="Сумма макс"><n-input-number v-model:value="form.amount_max" :min="0" style="width: 100%" clearable /></n-form-item>
         </div>
-
-        <div class="adm-grid-2">
-          <div class="adm-field">
-            <label class="adm-field__label">Срок мин, мес</label>
-            <input v-model.number="form.term_min" class="adm-input" type="number" />
-          </div>
-          <div class="adm-field">
-            <label class="adm-field__label">Срок макс, мес</label>
-            <input v-model.number="form.term_max" class="adm-input" type="number" />
-          </div>
+        <div class="grid3">
+          <n-form-item label="Срок мин, мес"><n-input-number v-model:value="form.term_min" :min="1" style="width: 100%" clearable /></n-form-item>
+          <n-form-item label="Срок макс, мес"><n-input-number v-model:value="form.term_max" :min="1" style="width: 100%" clearable /></n-form-item>
+          <n-form-item label="Подкатегория"><n-input v-model:value="form.subcategory" placeholder="consumer…" /></n-form-item>
         </div>
-
-        <div class="adm-grid-2">
-          <div class="adm-field">
-            <label class="adm-field__label">Статус</label>
-            <select v-model="form.status" class="adm-select">
-              <option value="draft">Черновик</option>
-              <option value="active">Активен</option>
-              <option value="hidden">Скрыт</option>
-              <option value="outdated">Устарел</option>
-            </select>
-          </div>
-          <div class="adm-field">
-            <label class="adm-field__label">Подкатегория</label>
-            <input v-model="form.subcategory" class="adm-input" placeholder="consumer, mortgage…" />
-          </div>
-        </div>
-
-        <div class="adm-field">
-          <label class="adm-field__label">Описание (RU)</label>
-          <textarea v-model="form.description_ru" class="adm-textarea" />
-        </div>
-
-        <div class="adm-field">
-          <label class="adm-field__label">Особенности</label>
-          <div style="display: flex; flex-wrap: wrap; gap: var(--space-4)">
-            <label v-for="k in FEATURE_KEYS" :key="k" class="adm-checkbox">
-              <input v-model="form.features[k]" type="checkbox" /> {{ FEATURE_LABEL[k] }}
-            </label>
-          </div>
-        </div>
-
-        <label class="adm-checkbox">
-          <input v-model="form.is_special" type="checkbox" /> Специальный продукт
-        </label>
-
-        <p v-if="formError" class="adm-alert">{{ formError }}</p>
-
-        <div class="adm-form__actions">
-          <BaseButton variant="ghost" type="button" @click="modalOpen = false">Отмена</BaseButton>
-          <BaseButton type="submit" :loading="saving">Сохранить</BaseButton>
-        </div>
-      </form>
-    </BaseModal>
+        <n-form-item label="Описание (RU)">
+          <n-input v-model:value="form.description_ru" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" />
+        </n-form-item>
+        <n-form-item label="Особенности">
+          <n-checkbox-group v-model:value="featureList">
+            <n-space>
+              <n-checkbox v-for="k in FEATURE_KEYS" :key="k" :value="k" :label="FEATURE_LABEL[k]" />
+            </n-space>
+          </n-checkbox-group>
+        </n-form-item>
+        <n-form-item label="Специальный продукт">
+          <n-switch v-model:value="form.is_special" />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showModal = false">Отмена</n-button>
+          <n-button type="primary" :loading="saving" @click="save">Сохранить</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <style scoped>
-.info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-.info div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.info dt {
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--color-text-muted);
-}
-.info dd {
-  color: var(--color-text-primary);
-  font-size: var(--fs-sm);
-}
-@media (max-width: 560px) {
-  .info { grid-template-columns: 1fr; }
-}
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.head__title { font-size: 22px; font-weight: 700; margin: 4px 0 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+@media (max-width: 560px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
 </style>

@@ -47,6 +47,10 @@ func (d *Discoverer) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if len(d.cfg.BankIDs) > 0 {
+		instrs = filterInstructionsByBank(instrs, d.cfg.BankIDs)
+		d.log.Info("фильтр PARSER_BANK_IDS применён", "bank_ids", d.cfg.BankIDs, "instructions", len(instrs))
+	}
 	d.log.Info("старт discovery", "instructions", len(instrs), "concurrency", d.cfg.Concurrency)
 
 	sem := make(chan struct{}, d.cfg.Concurrency)
@@ -70,6 +74,21 @@ func (d *Discoverer) Run(ctx context.Context) error {
 	wg.Wait()
 	d.log.Info("discovery завершён")
 	return nil
+}
+
+// filterInstructionsByBank оставляет только инструкции выбранных банков (PARSER_BANK_IDS).
+func filterInstructionsByBank(instrs []model.DiscoveryInstruction, bankIDs []int64) []model.DiscoveryInstruction {
+	allow := make(map[int64]bool, len(bankIDs))
+	for _, id := range bankIDs {
+		allow[id] = true
+	}
+	out := make([]model.DiscoveryInstruction, 0, len(instrs))
+	for _, in := range instrs {
+		if allow[in.BankID] {
+			out = append(out, in)
+		}
+	}
+	return out
 }
 
 // process обрабатывает одну инструкцию: scrape → extract links → upsert sources.
@@ -171,10 +190,11 @@ func resolveAndFilter(start string, links []string) []string {
 		if !sameSite(start, abs) {
 			continue
 		}
-		if seen[abs] {
+		key := normalizeURL(abs)
+		if seen[key] {
 			continue
 		}
-		seen[abs] = true
+		seen[key] = true
 		out = append(out, abs)
 		if len(out) >= maxLinksPerInstruction {
 			break
@@ -200,4 +220,26 @@ func regDomain(h string) string {
 		return strings.ToLower(h)
 	}
 	return parts[len(parts)-2] + "." + parts[len(parts)-1]
+}
+
+// normalizeURL приводит URL к канонической форме только для дедупа в рамках
+// одного прогона (без fragment/tracking-параметров/хвостового слэша, host в
+// нижнем регистре) — почти-дубли ссылок на один и тот же продукт не должны
+// плодить отдельные bank_source_urls (см. жалобу на дубли продуктов в рамках банка).
+func normalizeURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	u.Fragment = ""
+	u.Host = strings.ToLower(u.Host)
+	u.Scheme = strings.ToLower(u.Scheme)
+	if q := u.Query(); len(q) > 0 {
+		for _, k := range []string{"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "fbclid", "gclid", "ysclid", "yclid"} {
+			q.Del(k)
+		}
+		u.RawQuery = q.Encode()
+	}
+	u.Path = strings.TrimSuffix(u.Path, "/")
+	return u.String()
 }

@@ -82,6 +82,10 @@ type ParsedProduct struct {
 	NameTG        *string    `json:"name_tg"`
 	DescriptionRU *string    `json:"description_ru"`
 	DescriptionTG *string    `json:"description_tg"`
+	KeyConditionsRU []string `json:"key_conditions_ru"` // буллеты условий сверх ставки/суммы/срока (0% предоплаты, комиссия по сегментам…); nil = на странице такого текста нет
+	KeyConditionsTG []string `json:"key_conditions_tg"`
+	DocumentsRU     []string `json:"documents_ru"` // минимальный пакет документов
+	DocumentsTG     []string `json:"documents_tg"`
 	RateMin       float64    `json:"rate_min"`
 	RateMax       float64    `json:"rate_max"`
 	AmountMin     *float64   `json:"amount_min"` // null = минимальная сумма не указана/не ограничена
@@ -90,6 +94,7 @@ type ParsedProduct struct {
 	TermMax       *int       `json:"term_max"`   // null = без верхней границы
 	Features      Features   `json:"features"`
 	RateTiers     []RateTier `json:"rate_tiers"`
+	IsSpecial     bool       `json:"is_special"` // особый/аномальный продукт (рефинансирование, реструктуризация и т.п.) — по умолчанию скрыт из обычной выдачи (products.is_special)
 	SourceNote    *string    `json:"source_note"` // для отладки, не на витрину
 }
 

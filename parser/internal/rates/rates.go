@@ -40,6 +40,10 @@ func (r *Rater) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if len(r.cfg.BankIDs) > 0 {
+		instrs = filterInstructionsByBank(instrs, r.cfg.BankIDs)
+		r.log.Info("фильтр PARSER_BANK_IDS применён", "bank_ids", r.cfg.BankIDs, "instructions", len(instrs))
+	}
 	r.log.Info("старт парсинга курсов", "instructions", len(instrs), "concurrency", r.cfg.Concurrency)
 
 	sem := make(chan struct{}, r.cfg.Concurrency)
@@ -63,6 +67,21 @@ func (r *Rater) Run(ctx context.Context) error {
 	wg.Wait()
 	r.log.Info("парсинг курсов завершён")
 	return nil
+}
+
+// filterInstructionsByBank оставляет только инструкции выбранных банков (PARSER_BANK_IDS).
+func filterInstructionsByBank(instrs []model.DiscoveryInstruction, bankIDs []int64) []model.DiscoveryInstruction {
+	allow := make(map[int64]bool, len(bankIDs))
+	for _, id := range bankIDs {
+		allow[id] = true
+	}
+	out := make([]model.DiscoveryInstruction, 0, len(instrs))
+	for _, in := range instrs {
+		if allow[in.BankID] {
+			out = append(out, in)
+		}
+	}
+	return out
 }
 
 func (r *Rater) process(ctx context.Context, in model.DiscoveryInstruction) {
@@ -121,7 +140,16 @@ func (r *Rater) process(ctx context.Context, in model.DiscoveryInstruction) {
 }
 
 // rateKeywordRe — сигналы расположения курсов в сыром HTML (таблицы И JSON-в-скриптах).
-var rateKeywordRe = regexp.MustCompile(`(?i)exchangeRates|cashDesks|nonCash|transfers|conversion|"purchase"|"sale"|"buy"|"sell"|курс|харид|фуру|продаж|покупк|\bUSD\b|\bEUR\b|\bRUB\b`)
+// «перевод» — вкладка «Денежные переводы» (без неё раньше терялась category=transfer).
+var rateKeywordRe = regexp.MustCompile(`(?i)exchangeRates|cashDesks|nonCash|transfers|conversion|"purchase"|"sale"|"buy"|"sell"|курс|харид|фуру|продаж|покупк|перевод|\bUSD\b|\bEUR\b|\bRUB\b`)
+
+// svgRe вырезает инлайн-SVG (иконки флагов валют и т.п.) ДО поиска ключевых
+// слов. На страницах курсов банков (например eskhata.com) каждая строка
+// валюты в КАЖДОЙ вкладке несёт SVG-иконку на 2-5 тыс. символов — без вырезки
+// это декоративное месиво съедает весь rateMaxContext ещё на первой вкладке
+// («Частным лицам»), и до вкладки «Денежные переводы» окно не дотягивается
+// (баг: парсились только cash-курсы, transfer терялся полностью).
+var svgRe = regexp.MustCompile(`(?is)<svg\b[^>]*>.*?</svg>`)
 
 const (
 	rateWindowBefore = 200   // символов до ключа
@@ -133,6 +161,7 @@ const (
 // склеивает их — чтобы не слать в AI сотни КБ markup. Работает и для таблиц,
 // и для JSON внутри <script> (Next.js exchangeRates и т.п.).
 func extractRateContext(html string) string {
+	html = svgRe.ReplaceAllString(html, "")
 	locs := rateKeywordRe.FindAllStringIndex(html, -1)
 	if len(locs) == 0 {
 		if len(html) > rateMaxContext {

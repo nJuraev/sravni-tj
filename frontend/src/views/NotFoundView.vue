@@ -11,7 +11,7 @@ const { t } = useI18n()
   <div class="notfound container">
     <StateMessage :title="t('notFound.title')" :hint="t('notFound.hint')">
       <template #action>
-        <RouterLink to="/credit">
+        <RouterLink to="/">
           <BaseButton variant="primary">{{ t('notFound.home') }}</BaseButton>
         </RouterLink>
       </template>

@@ -30,6 +30,7 @@ Route::get('/products/{product}', [ProductController::class, 'show'])
     ->whereNumber('product');
 
 Route::get('/banks', [BankController::class, 'index']);
+Route::get('/banks/{bank}', [BankController::class, 'show'])->whereNumber('bank');
 
 // Курсы валют (только чтение). /best — лучший курс под операцию клиента.
 Route::get('/rates/best', [RateController::class, 'best']);

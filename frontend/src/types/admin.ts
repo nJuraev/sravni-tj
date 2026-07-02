@@ -27,6 +27,8 @@ export interface AdminBank {
   phone: string | null
   address_ru: string | null
   address_tg: string | null
+  about_ru: string | null
+  about_tg: string | null
   logo_url: string | null
   products_count?: number
   leads_count?: number
@@ -48,6 +50,11 @@ export interface AdminProduct {
   name_tg: string | null
   description_ru: string | null
   description_tg: string | null
+  key_conditions_ru: string[] | null
+  key_conditions_tg: string[] | null
+  documents_ru: string[] | null
+  documents_tg: string[] | null
+  source_url: string | null
   rate_min: number | null
   rate_max: number | null
   amount_min: number | null
@@ -110,7 +117,20 @@ export type BankPayload = Omit<
 
 export type ProductPayload = Omit<
   AdminProduct,
-  'id' | 'source_url_id' | 'external_key' | 'locked_fields' | 'bank' | 'parsed_at' | 'created_at' | 'updated_at'
+  | 'id'
+  | 'source_url_id'
+  | 'external_key'
+  | 'locked_fields'
+  | 'bank'
+  | 'parsed_at'
+  | 'created_at'
+  | 'updated_at'
+  // Контент, извлекаемый только парсером — админка их не редактирует.
+  | 'key_conditions_ru'
+  | 'key_conditions_tg'
+  | 'documents_ru'
+  | 'documents_tg'
+  | 'source_url'
 >
 
 export interface UserPayload {

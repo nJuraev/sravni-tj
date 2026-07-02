@@ -1,4 +1,4 @@
-import type { Bank, Product } from '@/types/api'
+import type { Bank, Product, Rate } from '@/types/api'
 
 /**
  * Mock fixtures derived from docs/api/contracts.md examples, expanded into a
@@ -7,8 +7,22 @@ import type { Bank, Product } from '@/types/api'
  */
 
 export const mockBanks: Bank[] = [
-  { id: 7, name_ru: 'Банк Эсхата', name_tg: 'Бонки Эсхата', is_partner: true },
-  { id: 9, name_ru: 'Алиф Банк', name_tg: 'Алиф Бонк', is_partner: false },
+  {
+    id: 7,
+    name_ru: 'Банк Эсхата',
+    name_tg: 'Бонки Эсхата',
+    is_partner: true,
+    website: 'https://eskhata.com',
+    phone: '+992 44 600 40 00',
+    contact_email: 'info@eskhata.com',
+    address_ru: 'г. Душанбе, пр. Рудаки, 137/1',
+    address_tg: 'ш. Душанбе, хиёбони Рӯдакӣ, 137/1',
+    about_ru: 'Один из крупнейших банков Таджикистана: розничное кредитование, депозиты и цифровые сервисы для частных клиентов.',
+    about_tg: 'Яке аз бонкҳои бузурги Тоҷикистон: қарздиҳии чакана, амонатҳо ва хизматрасониҳои рақамӣ барои мизоҷони хусусӣ.',
+    rating_avg: 4.6,
+    rating_count: 128,
+  },
+  { id: 9, name_ru: 'Алиф Банк', name_tg: 'Алиф Бонк', is_partner: false, website: 'https://alif.tj', phone: '+992 48 701 00 00' },
   { id: 12, name_ru: 'Душанбе Сити', name_tg: null, is_partner: false },
   { id: 15, name_ru: 'Ориёнбонк', name_tg: 'Ориёнбонк', is_partner: true },
   { id: 18, name_ru: 'Спитамен Банк', name_tg: 'Бонки Спитамен', is_partner: false },
@@ -26,6 +40,11 @@ const rawProducts: Array<Omit<Product, 'is_special'> & { is_special?: boolean }>
     description_ru:
       'Срочный вклад с капитализацией процентов и возможностью пополнения. Доход выплачивается в конце срока.',
     description_tg: null,
+    key_conditions_ru: ['0% комиссии за открытие', 'Пополнение без ограничений', 'Досрочное закрытие с пересчётом по ставке до востребования'],
+    key_conditions_tg: null,
+    documents_ru: ['Паспорт', 'ИНН'],
+    documents_tg: ['Шиноснома', 'РМА'],
+    source_url: 'https://eskhata.com/depo/profit/',
     rate_min: 10.0,
     rate_max: 16.5,
     amount_min: 5000,
@@ -308,3 +327,31 @@ const rawProducts: Array<Omit<Product, 'is_special'> & { is_special?: boolean }>
 
 /** Публичный каталог: is_special по умолчанию false, если не задан явно. */
 export const mockProducts: Product[] = rawProducts.map((p) => ({ is_special: false, ...p }))
+
+/**
+ * Несколько банков на валюту×категорию — так mockGetBestRate реально выбирает
+ * победителя (min sell / max buy), а не просто отдаёт один захардкоженный ответ.
+ */
+export const mockRates: Rate[] = [
+  // USD — обмен в кассе
+  { bank: mockBanks[0], currency: 'USD', category: 'cash', buy: 11.24, sell: 11.32, rate_date: '2026-07-02' },
+  { bank: mockBanks[1], currency: 'USD', category: 'cash', buy: 11.2, sell: 11.3, rate_date: '2026-07-02' },
+  { bank: mockBanks[3], currency: 'USD', category: 'cash', buy: 11.22, sell: 11.34, rate_date: '2026-07-02' },
+  // USD — денежные переводы
+  { bank: mockBanks[0], currency: 'USD', category: 'transfer', buy: 11.18, sell: 11.3, rate_date: '2026-07-02' },
+  { bank: mockBanks[4], currency: 'USD', category: 'transfer', buy: 11.24, sell: 11.28, rate_date: '2026-07-02' },
+  { bank: mockBanks[2], currency: 'USD', category: 'transfer', buy: 11.15, sell: 11.33, rate_date: '2026-07-02' },
+  // EUR — обмен в кассе
+  { bank: mockBanks[0], currency: 'EUR', category: 'cash', buy: 11.96, sell: 12.1, rate_date: '2026-07-02' },
+  { bank: mockBanks[4], currency: 'EUR', category: 'cash', buy: 12.0, sell: 12.05, rate_date: '2026-07-02' },
+  { bank: mockBanks[3], currency: 'EUR', category: 'cash', buy: 11.9, sell: 12.12, rate_date: '2026-07-02' },
+  // EUR — денежные переводы
+  { bank: mockBanks[1], currency: 'EUR', category: 'transfer', buy: 11.98, sell: 12.08, rate_date: '2026-07-02' },
+  { bank: mockBanks[0], currency: 'EUR', category: 'transfer', buy: 11.92, sell: 12.15, rate_date: '2026-07-02' },
+  // RUB — обмен в кассе
+  { bank: mockBanks[4], currency: 'RUB', category: 'cash', buy: 0.114, sell: 0.118, rate_date: '2026-07-02' },
+  { bank: mockBanks[2], currency: 'RUB', category: 'cash', buy: 0.115, sell: 0.119, rate_date: '2026-07-02' },
+  // RUB — денежные переводы
+  { bank: mockBanks[3], currency: 'RUB', category: 'transfer', buy: 0.116, sell: 0.12, rate_date: '2026-07-02' },
+  { bank: mockBanks[0], currency: 'RUB', category: 'transfer', buy: 0.113, sell: 0.121, rate_date: '2026-07-02' },
+]

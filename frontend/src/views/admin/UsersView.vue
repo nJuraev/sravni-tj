@@ -1,181 +1,167 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { h, onMounted, reactive, ref } from 'vue'
+import {
+  NDataTable, NButton, NInput, NSelect, NTag, NSpace, NModal, NCard, NForm,
+  NFormItem, NSwitch, NIcon, useMessage, useDialog, type DataTableColumns,
+} from 'naive-ui'
+import { AddOutline } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminUser, UserPayload } from '@/types/admin'
-import BaseButton from '@/components/ui/BaseButton.vue'
-import BaseModal from '@/components/ui/BaseModal.vue'
 
 const admin = useAdminStore()
+const message = useMessage()
+const dialog = useDialog()
 
 const users = ref<AdminUser[]>([])
 const loading = ref(true)
 
-const modalOpen = ref(false)
+const showModal = ref(false)
 const editing = ref<AdminUser | null>(null)
 const saving = ref(false)
-const formError = ref('')
-const fieldErrors = ref<Record<string, string[]>>({})
+const fieldErrors = reactive<Record<string, string>>({})
 
 function emptyForm(): UserPayload {
   return { name: '', email: '', password: '', role: 'editor', is_active: true }
 }
-const form = ref<UserPayload>(emptyForm())
+const form = reactive<UserPayload>(emptyForm())
 
 async function load() {
   loading.value = true
-  try {
-    const res = await adminApi.listUsers()
-    users.value = res.data
-  } finally {
-    loading.value = false
-  }
+  try { users.value = (await adminApi.listUsers()).data }
+  finally { loading.value = false }
 }
 onMounted(load)
 
+function clearErrors() { for (const k of Object.keys(fieldErrors)) delete fieldErrors[k] }
+
 function openCreate() {
   editing.value = null
-  form.value = emptyForm()
-  fieldErrors.value = {}
-  formError.value = ''
-  modalOpen.value = true
+  Object.assign(form, emptyForm())
+  clearErrors()
+  showModal.value = true
 }
 function openEdit(u: AdminUser) {
   editing.value = u
-  form.value = { name: u.name, email: u.email, password: '', role: u.role, is_active: u.is_active }
-  fieldErrors.value = {}
-  formError.value = ''
-  modalOpen.value = true
+  Object.assign(form, { name: u.name, email: u.email, password: '', role: u.role, is_active: u.is_active })
+  clearErrors()
+  showModal.value = true
 }
 
 async function save() {
   saving.value = true
-  formError.value = ''
-  fieldErrors.value = {}
+  clearErrors()
   try {
-    if (editing.value) await adminApi.updateUser(editing.value.id, form.value)
-    else await adminApi.createUser(form.value)
-    modalOpen.value = false
+    if (editing.value) await adminApi.updateUser(editing.value.id, { ...form })
+    else await adminApi.createUser({ ...form })
+    message.success(editing.value ? 'Пользователь обновлён' : 'Пользователь создан')
+    showModal.value = false
     await load()
   } catch (e) {
     if (e instanceof ApiError && e.isValidation) {
-      fieldErrors.value = e.fieldErrors
-      formError.value = Object.values(e.fieldErrors)[0]?.[0] ?? 'Проверьте поля формы.'
-    } else if (e instanceof ApiError) formError.value = e.message
-    else formError.value = 'Ошибка сохранения.'
+      for (const [k, v] of Object.entries(e.fieldErrors)) fieldErrors[k] = v[0]
+      message.error('Проверьте поля формы')
+    } else {
+      message.error(e instanceof ApiError ? e.message : 'Ошибка сохранения')
+    }
   } finally {
     saving.value = false
   }
 }
 
-async function remove(u: AdminUser) {
-  if (!confirm(`Удалить пользователя «${u.name}»?`)) return
-  try {
-    await adminApi.deleteUser(u.id)
-    await load()
-  } catch (e) {
-    alert(e instanceof ApiError ? e.message : 'Не удалось удалить.')
-  }
+function remove(u: AdminUser) {
+  dialog.warning({
+    title: 'Удалить пользователя', content: `Удалить «${u.name}»?`,
+    positiveText: 'Удалить', negativeText: 'Отмена',
+    onPositiveClick: async () => {
+      try { await adminApi.deleteUser(u.id); message.success('Удалён'); await load() }
+      catch (e) { message.error(e instanceof ApiError ? e.message : 'Не удалось удалить') }
+    },
+  })
 }
 
-function err(field: string): string {
-  return fieldErrors.value[field]?.[0] ?? ''
-}
+const roleOptions = [{ label: 'Редактор', value: 'editor' }, { label: 'Администратор', value: 'admin' }]
+
+const columns: DataTableColumns<AdminUser> = [
+  {
+    title: 'Имя', key: 'name',
+    render: (u) => h(NSpace, { align: 'center', size: 6 }, () => [
+      h('strong', u.name),
+      u.id === admin.user?.id ? h(NTag, { size: 'small', type: 'info', bordered: false }, () => 'вы') : null,
+    ]),
+  },
+  { title: 'Email', key: 'email' },
+  { title: 'Роль', key: 'role', width: 150, render: (u) => (u.role === 'admin' ? 'Администратор' : 'Редактор') },
+  {
+    title: 'Статус', key: 'is_active', width: 120,
+    render: (u) => h(NTag, { size: 'small', type: u.is_active ? 'success' : 'default', bordered: false },
+      () => (u.is_active ? 'активен' : 'выключен')),
+  },
+  {
+    title: '', key: 'actions', width: 180, align: 'right',
+    render: (u) => h(NSpace, { justify: 'end', size: 8 }, () => [
+      h(NButton, { size: 'small', quaternary: true, onClick: () => openEdit(u) }, () => 'Изм.'),
+      u.id !== admin.user?.id
+        ? h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => remove(u) }, () => 'Удалить')
+        : null,
+    ]),
+  },
+]
 </script>
 
 <template>
   <div>
-    <div class="adm__head">
-      <h1 class="adm__title">Пользователи</h1>
-      <BaseButton @click="openCreate">+ Пользователь</BaseButton>
+    <div class="head">
+      <h1 class="head__title">Пользователи</h1>
+      <n-button type="primary" @click="openCreate">
+        <template #icon><n-icon><AddOutline /></n-icon></template>
+        Пользователь
+      </n-button>
     </div>
 
-    <div class="adm-card">
-      <div v-if="loading" class="adm-empty">Загрузка…</div>
-      <table v-else class="adm-table">
-        <thead>
-          <tr>
-            <th>Имя</th>
-            <th>Email</th>
-            <th>Роль</th>
-            <th>Статус</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="u in users" :key="u.id">
-            <td>
-              <strong>{{ u.name }}</strong>
-              <span v-if="u.id === admin.user?.id" class="adm-badge adm-badge--blue" style="margin-left: 6px">вы</span>
-            </td>
-            <td>{{ u.email }}</td>
-            <td>{{ u.role === 'admin' ? 'Администратор' : 'Редактор' }}</td>
-            <td>
-              <span class="adm-badge" :class="u.is_active ? 'adm-badge--green' : 'adm-badge--gray'">
-                {{ u.is_active ? 'активен' : 'выключен' }}
-              </span>
-            </td>
-            <td>
-              <div class="adm-table__actions">
-                <BaseButton size="sm" variant="ghost" @click="openEdit(u)">Изм.</BaseButton>
-                <BaseButton
-                  v-if="u.id !== admin.user?.id"
-                  size="sm"
-                  variant="danger"
-                  @click="remove(u)"
-                >
-                  Удалить
-                </BaseButton>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <n-card :bordered="false">
+      <n-data-table :columns="columns" :data="users" :loading="loading" :row-key="(u: AdminUser) => u.id" />
+    </n-card>
 
-    <BaseModal :open="modalOpen" :title="editing ? 'Редактировать пользователя' : 'Новый пользователь'" @close="modalOpen = false">
-      <form class="adm-form" @submit.prevent="save">
-        <div class="adm-field">
-          <label class="adm-field__label">Имя</label>
-          <input v-model="form.name" class="adm-input" :class="{ 'adm-input--error': err('name') }" />
-          <span v-if="err('name')" class="adm-field__error">{{ err('name') }}</span>
+    <n-modal
+      v-model:show="showModal" preset="card" style="width: 480px"
+      :title="editing ? 'Редактировать пользователя' : 'Новый пользователь'"
+    >
+      <n-form label-placement="top">
+        <n-form-item label="Имя" :validation-status="fieldErrors.name ? 'error' : undefined" :feedback="fieldErrors.name">
+          <n-input v-model:value="form.name" />
+        </n-form-item>
+        <n-form-item label="Email" :validation-status="fieldErrors.email ? 'error' : undefined" :feedback="fieldErrors.email">
+          <n-input v-model:value="form.email" />
+        </n-form-item>
+        <n-form-item
+          :label="editing ? 'Пароль (пусто = не менять)' : 'Пароль'"
+          :validation-status="fieldErrors.password ? 'error' : undefined" :feedback="fieldErrors.password"
+        >
+          <n-input v-model:value="form.password" type="password" show-password-on="click" />
+        </n-form-item>
+        <div class="grid2">
+          <n-form-item label="Роль" :validation-status="fieldErrors.role ? 'error' : undefined" :feedback="fieldErrors.role">
+            <n-select v-model:value="form.role" :options="roleOptions" />
+          </n-form-item>
+          <n-form-item label="Активен">
+            <n-switch v-model:value="form.is_active" />
+          </n-form-item>
         </div>
-        <div class="adm-field">
-          <label class="adm-field__label">Email</label>
-          <input v-model="form.email" class="adm-input" type="email" :class="{ 'adm-input--error': err('email') }" />
-          <span v-if="err('email')" class="adm-field__error">{{ err('email') }}</span>
-        </div>
-        <div class="adm-field">
-          <label class="adm-field__label">
-            Пароль <span v-if="editing" style="color: var(--color-text-muted); font-weight: 400">(пусто = не менять)</span>
-          </label>
-          <input v-model="form.password" class="adm-input" type="password" autocomplete="new-password" :class="{ 'adm-input--error': err('password') }" />
-          <span v-if="err('password')" class="adm-field__error">{{ err('password') }}</span>
-        </div>
-        <div class="adm-grid-2">
-          <div class="adm-field">
-            <label class="adm-field__label">Роль</label>
-            <select v-model="form.role" class="adm-select">
-              <option value="editor">Редактор</option>
-              <option value="admin">Администратор</option>
-            </select>
-            <span v-if="err('role')" class="adm-field__error">{{ err('role') }}</span>
-          </div>
-          <div class="adm-field" style="justify-content: flex-end">
-            <label class="adm-checkbox">
-              <input v-model="form.is_active" type="checkbox" /> Активен
-            </label>
-          </div>
-        </div>
-
-        <p v-if="formError" class="adm-alert">{{ formError }}</p>
-
-        <div class="adm-form__actions">
-          <BaseButton variant="ghost" type="button" @click="modalOpen = false">Отмена</BaseButton>
-          <BaseButton type="submit" :loading="saving">Сохранить</BaseButton>
-        </div>
-      </form>
-    </BaseModal>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showModal = false">Отмена</n-button>
+          <n-button type="primary" :loading="saving" @click="save">Сохранить</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
+
+<style scoped>
+.head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.head__title { font-size: 24px; font-weight: 700; margin: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+</style>

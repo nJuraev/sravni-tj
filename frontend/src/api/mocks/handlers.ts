@@ -1,5 +1,8 @@
 import type {
   BankListResponse,
+  BankResponse,
+  BestRateQuery,
+  BestRateResponse,
   FeatureKey,
   LeadRequest,
   LeadResponse,
@@ -9,7 +12,7 @@ import type {
   ProductResponse,
 } from '@/types/api'
 import { ApiError } from '@/api/errors'
-import { mockBanks, mockProducts } from './fixtures'
+import { mockBanks, mockProducts, mockRates } from './fixtures'
 
 /**
  * In-memory mock backend replicating contracts.md semantics:
@@ -100,6 +103,37 @@ export async function mockGetProduct(id: number): Promise<ProductResponse> {
 
 export async function mockGetBanks(): Promise<BankListResponse> {
   return delay({ data: mockBanks })
+}
+
+export async function mockGetBank(id: number): Promise<BankResponse> {
+  const bank = mockBanks.find((b) => b.id === id)
+  if (!bank) {
+    return Promise.reject(new ApiError(404, { message: 'Resource not found.' }))
+  }
+  return delay({ data: bank })
+}
+
+/**
+ * Отражает RateController::best — op описывает операцию КЛИЕНТА:
+ * buy (клиент покупает валюту) → лучший = минимальный sell среди банков;
+ * sell (клиент продаёт валюту) → лучший = максимальный buy среди банков.
+ */
+export async function mockGetBestRate(query: BestRateQuery): Promise<BestRateResponse> {
+  const currency = query.currency.toUpperCase()
+  const candidates = mockRates.filter(
+    (r) =>
+      r.currency === currency &&
+      r.category === query.category &&
+      (query.op === 'buy' ? r.sell !== null : r.buy !== null),
+  )
+  if (candidates.length === 0) return delay({ data: null })
+
+  const best =
+    query.op === 'buy'
+      ? candidates.reduce((a, b) => ((b.sell as number) < (a.sell as number) ? b : a))
+      : candidates.reduce((a, b) => ((b.buy as number) > (a.buy as number) ? b : a))
+
+  return delay({ data: best })
 }
 
 export async function mockPostLead(body: LeadRequest): Promise<LeadResponse> {

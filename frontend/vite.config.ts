@@ -24,7 +24,7 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       host: true,
-      port: 5173,
+      port: Number(process.env.PORT) || 5173,
     },
     // `vite preview` обслуживает собранный dist на Railway (SPA-fallback по
     // умолчанию). allowedHosts: true — иначе Railway-домен отклоняется.

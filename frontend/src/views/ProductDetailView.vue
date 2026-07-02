@@ -38,6 +38,12 @@ const features = computed(() => (product.value ? activeFeatures(product.value) :
 const description = computed(() =>
   product.value ? value(product.value.description_ru, product.value.description_tg) : '',
 )
+const keyConditions = computed(() =>
+  product.value ? (loc.value === 'tg' && product.value.key_conditions_tg?.length ? product.value.key_conditions_tg : product.value.key_conditions_ru) ?? [] : [],
+)
+const documents = computed(() =>
+  product.value ? (loc.value === 'tg' && product.value.documents_tg?.length ? product.value.documents_tg : product.value.documents_ru) ?? [] : [],
+)
 
 const parsedAt = computed(() => {
   if (!product.value?.parsed_at) return ''
@@ -131,7 +137,7 @@ watch(() => props.id, (id) => load(id), { immediate: true })
           <BaseBadge v-if="product.bank.is_partner" tone="green">{{ t('common.partner') }}</BaseBadge>
         </div>
         <h1>{{ name(product) }}</h1>
-        <p class="detail__bank">{{ name(product.bank) }}</p>
+        <RouterLink :to="`/bank/${product.bank.id}`" class="detail__bank">{{ name(product.bank) }}</RouterLink>
         <p v-if="description" class="detail__desc">{{ description }}</p>
       </header>
 
@@ -172,7 +178,28 @@ watch(() => props.id, (id) => load(id), { immediate: true })
             </ul>
           </BaseCard>
 
+          <BaseCard v-if="keyConditions.length">
+            <h2 class="detail__section-title">{{ t('product.keyConditions') }}</h2>
+            <ul class="detail__list" role="list">
+              <li v-for="(c, i) in keyConditions" :key="i">{{ c }}</li>
+            </ul>
+          </BaseCard>
+
+          <BaseCard v-if="documents.length">
+            <h2 class="detail__section-title">{{ t('product.documents') }}</h2>
+            <ul class="detail__list" role="list">
+              <li v-for="(d, i) in documents" :key="i">{{ d }}</li>
+            </ul>
+          </BaseCard>
+
           <p v-if="parsedAt" class="detail__parsed">{{ t('product.parsedAt') }}: {{ parsedAt }}</p>
+          <a
+            v-if="product.source_url"
+            :href="product.source_url"
+            target="_blank"
+            rel="noopener"
+            class="detail__source-link"
+          >{{ t('product.viewOnBankSite') }} ↗</a>
         </div>
 
         <aside class="detail__aside">
@@ -219,9 +246,14 @@ watch(() => props.id, (id) => load(id), { immediate: true })
   margin-bottom: var(--space-3);
 }
 .detail__bank {
+  display: inline-block;
   margin-top: var(--space-1);
   color: var(--color-text-secondary);
   font-weight: 600;
+  text-decoration: none;
+}
+.detail__bank:hover {
+  color: var(--color-primary);
 }
 .detail__desc {
   margin-top: var(--space-3);
@@ -279,6 +311,21 @@ watch(() => props.id, (id) => load(id), { immediate: true })
 .detail__parsed {
   font-size: var(--fs-sm);
   color: var(--color-text-muted);
+}
+.detail__list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+}
+.detail__source-link {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+.detail__source-link:hover {
+  color: var(--color-primary);
 }
 .detail__aside {
   display: flex;

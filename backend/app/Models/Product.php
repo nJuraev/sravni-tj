@@ -25,6 +25,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $name_tg
  * @property string|null $description_ru
  * @property string|null $description_tg
+ * @property array<int, string>|null $key_conditions_ru
+ * @property array<int, string>|null $key_conditions_tg
+ * @property array<int, string>|null $documents_ru
+ * @property array<int, string>|null $documents_tg
+ * @property string|null $source_url
  * @property string $status
  * @property string $currency
  * @property string $rate_min
@@ -50,6 +55,10 @@ class Product extends Model
     protected $casts = [
         'features' => 'array',
         'locked_fields' => 'array',
+        'key_conditions_ru' => 'array',
+        'key_conditions_tg' => 'array',
+        'documents_ru' => 'array',
+        'documents_tg' => 'array',
         'is_special' => 'boolean',
         // Денежные/ставочные поля — decimal-строки (точная арифметика NUMERIC,
         // не float). Resource приводит их к числам для JSON по контракту.

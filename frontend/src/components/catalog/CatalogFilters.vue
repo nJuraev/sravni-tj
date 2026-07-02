@@ -49,6 +49,10 @@ const subcategoryOptions = computed<Subcategory[]>(
   () => SUBCATEGORIES_BY_CATEGORY[props.query.category ?? 'credit'] ?? [],
 )
 
+// Advanced section (ranges/features) collapsed by default; opens automatically
+// if the incoming query already has one of them set, so state stays visible.
+const advancedOpen = ref(false)
+
 // Local editable copy; numeric fields use '' when empty for clean inputs.
 const local = reactive({
   bank_id: [] as number[],
@@ -68,6 +72,20 @@ const local = reactive({
 // «Особые» (аномальные) — только у кредитов; галочка по умолчанию выкл.
 const showSpecial = computed(() => (props.query.category ?? 'credit') === 'credit')
 
+const activeAdvancedCount = computed(() => {
+  let n = 0
+  if (local.special) n++
+  if (local.amount_min !== '' || local.amount_max !== '') n++
+  if (local.term_min !== '' || local.term_max !== '') n++
+  if (local.rate_min !== '' || local.rate_max !== '') n++
+  if (local.features.length) n++
+  return n
+})
+
+function toggleAdvanced() {
+  advancedOpen.value = !advancedOpen.value
+}
+
 function hydrate(q: ProductQuery) {
   local.bank_id = [...(q.bank_id ?? [])]
   // Drop any codes not valid for the current category (e.g. after switching tabs).
@@ -82,6 +100,7 @@ function hydrate(q: ProductQuery) {
   local.features = [...(q.features ?? [])]
   local.special = q.special ?? false
   local.sort = q.sort ?? DEFAULT_SORT
+  if (activeAdvancedCount.value > 0) advancedOpen.value = true
 }
 
 watch(() => props.query, hydrate, { immediate: true, deep: true })
@@ -223,6 +242,25 @@ watch(
       </div>
     </fieldset>
 
+    <button
+      type="button"
+      class="filters__advanced-toggle"
+      :aria-expanded="advancedOpen"
+      @click="toggleAdvanced"
+    >
+      <span>{{ advancedOpen ? t('filters.hideAdvanced') : t('filters.showAdvanced') }}</span>
+      <span v-if="activeAdvancedCount" class="filters__badge">{{ activeAdvancedCount }}</span>
+      <svg
+        class="filters__advanced-chevron"
+        :class="{ 'filters__advanced-chevron--open': advancedOpen }"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+      >
+        <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
+
+    <div v-show="advancedOpen" class="filters__advanced">
     <fieldset v-if="showSpecial" class="filters__group">
       <legend>{{ t('filters.special') }}</legend>
       <BaseCheckbox :model-value="local.special" @update:model-value="onSpecialChange">
@@ -304,6 +342,7 @@ watch(
         {{ t(`features.${key}`) }}
       </BaseCheckbox>
     </fieldset>
+    </div>
 
     <div class="filters__sort">
       <BaseSelect v-model="local.sort" :label="t('catalog.sort.label')" :options="sortOptions" />
@@ -395,5 +434,47 @@ watch(
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
+}
+.filters__advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.filters__advanced-toggle:hover {
+  text-decoration: underline;
+}
+.filters__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.filters__advanced-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.15s ease;
+}
+.filters__advanced-chevron--open {
+  transform: rotate(180deg);
+}
+.filters__advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 </style>

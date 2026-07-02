@@ -11,7 +11,8 @@ function isCategory(value: unknown): value is Category {
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/credit',
+    name: 'home',
+    component: () => import('@/views/HomeView.vue'),
   },
   {
     // Route param constrained to the three valid categories; anything else
@@ -28,6 +29,12 @@ const routes: RouteRecordRaw[] = [
     path: '/product/:id(\\d+)',
     name: 'product',
     component: () => import('@/views/ProductDetailView.vue'),
+    props: (route) => ({ id: Number(route.params.id) }),
+  },
+  {
+    path: '/bank/:id(\\d+)',
+    name: 'bank',
+    component: () => import('@/views/BankView.vue'),
     props: (route) => ({ id: Number(route.params.id) }),
   },
   {

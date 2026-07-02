@@ -33,6 +33,8 @@ class BankResource extends JsonResource
             'phone' => $this->phone,
             'address_ru' => $this->address_ru,
             'address_tg' => $this->address_tg,
+            'about_ru' => $this->about_ru,
+            'about_tg' => $this->about_tg,
             'contact_email' => $this->contact_email,
             // Агрегаты рейтинга (по одобренным отзывам). Присутствуют, если
             // запрос загрузил их через scopeWithReviewStats; иначе null/0.

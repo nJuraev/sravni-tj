@@ -15,7 +15,7 @@ const props = defineProps<{ product: Product }>()
 
 const { t, locale } = useI18n()
 const { name } = useLocalizedField()
-const { activeFeatures, featureLabel, categoryLabel, subcategoryLabel } = useProductDisplay()
+const { activeFeatures, featureLabel, subcategoryLabel } = useProductDisplay()
 const compare = useCompareStore()
 const leadModal = useLeadModalStore()
 
@@ -73,7 +73,7 @@ function toggleCompare() {
         <span class="prow__logo" aria-hidden="true">{{ bankInitial }}</span>
         <div class="prow__bankinfo">
           <div class="prow__bankrow">
-            <span class="prow__bank">{{ name(product.bank) }}</span>
+            <RouterLink :to="`/bank/${product.bank.id}`" class="prow__bank">{{ name(product.bank) }}</RouterLink>
             <BaseBadge v-if="product.bank.is_partner" tone="green">{{ t('common.partner') }}</BaseBadge>
           </div>
           <div v-if="ratingCount > 0" class="prow__rating">
@@ -97,7 +97,6 @@ function toggleCompare() {
         <li v-for="f in features" :key="f">
           <BaseBadge tone="muted">{{ featureLabel(f) }}</BaseBadge>
         </li>
-        <li class="prow__cat"><BaseBadge tone="neutral">{{ categoryLabel(product) }}</BaseBadge></li>
         <li v-if="product.subcategory" class="prow__cat">
           <BaseBadge tone="neutral">{{ subcategoryLabel(product.subcategory) }}</BaseBadge>
         </li>
@@ -194,6 +193,10 @@ function toggleCompare() {
   font-weight: 600;
   font-size: var(--fs-sm);
   color: var(--color-text-secondary);
+  text-decoration: none;
+}
+.prow__bank:hover {
+  color: var(--color-primary);
 }
 .prow__rating {
   display: flex;

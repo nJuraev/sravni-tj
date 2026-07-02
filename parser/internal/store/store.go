@@ -30,6 +30,11 @@ type ProductWrite struct {
 	ExternalKey string // стабильный ключ идемпотентности: normalize(name)+currency
 	Product     model.ParsedProduct
 	ParsedAt    time.Time
+	// SourceURL — прямая ссылка на страницу ИМЕННО этого продукта на сайте
+	// банка. Не из AI (детерминированно проставляется оркестратором): для
+	// прямого парсинга — URL задачи; для index-режима — URL конкретной
+	// детальной страницы, с которой продукт собран (не страница-каталог).
+	SourceURL string
 }
 
 // RateWrite — подготовленный к записи курс валюты (одна строка bank_currency_rates).

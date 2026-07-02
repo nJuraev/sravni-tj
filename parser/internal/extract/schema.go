@@ -17,6 +17,17 @@ import (
 //
 // additionalProperties:false на каждом объекте — анти-галлюцинации (§1.3 схемы).
 // Схема строится программно, чтобы один источник истины служил обоим провайдерам.
+// stringListSchema — переиспользуемая схема nullable-массива строк (буллеты
+// условий/документов). Пустой список и null равнозначны «нет данных».
+func stringListSchema(description string) map[string]any {
+	return map[string]any{
+		"type":        []string{"array", "null"},
+		"maxItems":    20,
+		"description": description,
+		"items":       map[string]any{"type": "string", "minLength": 1, "maxLength": 300},
+	}
+}
+
 func responseSchema() map[string]any {
 	// Nullable-поля описываются как type-массив ["<type>","null"]
 	// (JSON Schema draft 2020-12), что поддерживают и Gemini, и OpenAI-совместимые.
@@ -53,7 +64,8 @@ func responseSchema() map[string]any {
 		"required": []string{
 			"category", "subcategory", "currency", "name_ru", "name_tg",
 			"rate_min", "rate_max", "amount_min", "amount_max",
-			"term_min", "term_max", "features", "rate_tiers",
+			"term_min", "term_max", "features", "rate_tiers", "is_special",
+			"key_conditions_ru", "key_conditions_tg", "documents_ru", "documents_tg",
 		},
 		"properties": map[string]any{
 			"category":       map[string]any{"type": "string", "enum": []string{"credit", "deposit", "installment"}, "description": "Тип продукта: credit — кредит/заём, deposit — вклад, installment — рассрочка/исламское финансирование (без ставки, через наценку)."},
@@ -67,6 +79,10 @@ func responseSchema() map[string]any {
 			"name_tg":        map[string]any{"type": []string{"string", "null"}, "minLength": 1, "maxLength": 255, "description": "Название на таджикском. null, если таджикского названия нет."},
 			"description_ru": map[string]any{"type": []string{"string", "null"}, "maxLength": 4000, "description": "Краткое описание на русском. null, если нет."},
 			"description_tg": map[string]any{"type": []string{"string", "null"}, "maxLength": 4000, "description": "Краткое описание на таджикском. null, если нет."},
+			"key_conditions_ru": stringListSchema("Ключевые условия продукта буллетами на русском (кроме ставки/суммы/срока — они уже в rate_tiers): предоплата, комиссия по сегментам клиентов, залог/обеспечение и т.п. null/[] — на странице нет такого текста."),
+			"key_conditions_tg": stringListSchema("То же на таджикском."),
+			"documents_ru":      stringListSchema("Минимальный пакет документов для оформления, буллетами на русском (например: Паспорт, ИНН). null/[] — на странице не указано."),
+			"documents_tg":      stringListSchema("То же на таджикском."),
 			"rate_min":       map[string]any{"type": "number", "minimum": 0, "maximum": 100, "description": "Минимальная годовая ставка, %. Если единая — равна rate_max."},
 			"rate_max":       map[string]any{"type": "number", "minimum": 0, "maximum": 100, "description": "Максимальная годовая ставка, %. Должна быть >= rate_min."},
 			"amount_min":     map[string]any{"type": []string{"number", "null"}, "minimum": 0, "description": "Минимальная сумма в валюте currency. null, если минимальная сумма не указана (НЕ 0)."},
@@ -81,6 +97,7 @@ func responseSchema() map[string]any {
 				"description": "Тарифная сетка: ставка зависит от срока И/ИЛИ суммы. Единая ставка → один элемент. Не выдумывай диапазоны.",
 				"items":       tierItem,
 			},
+			"is_special": map[string]any{"type": "boolean", "description": "true — особый/аномальный продукт: рефинансирование, реструктуризация долга и подобные нестандартные предложения. Для остальных продуктов — false."},
 			"source_note": map[string]any{"type": []string{"string", "null"}, "maxLength": 500, "description": "Необязательная заметка о неоднозначности извлечения. Для отладки."},
 		},
 	}

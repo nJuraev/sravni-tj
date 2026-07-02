@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $phone
  * @property string|null $address_ru
  * @property string|null $address_tg
+ * @property string|null $about_ru
+ * @property string|null $about_tg
  * @property string $status
  * @property bool $is_partner
  * @property string|null $logo_url

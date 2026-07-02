@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode"
 
 	"sravni/parser/internal/model"
 )
@@ -49,6 +50,11 @@ func ValidateProduct(p model.ParsedProduct, taskCategory model.Category) (*Resul
 	// 5.5 + 5.3: имя, категория, валюта — базовые enum/целостность.
 	if err := validateNamePresent(p); err != nil {
 		return nil, err
+	}
+	// Парсим только физлиц (CLAUDE.md): продукты, явно адресованные юрлицам/ИП,
+	// отбраковываем — AI-промпт этому учит, но это последний барьер.
+	if isLegalEntityOnly(p) {
+		return nil, &Error{Reason: "продукт для юридических лиц/ИП — вне скоупа парсера (только физлица)"}
 	}
 	if !p.Category.Valid() {
 		return nil, &Error{Reason: fmt.Sprintf("недопустимая category %q", p.Category)}
@@ -106,7 +112,163 @@ func ValidateProduct(p model.ParsedProduct, taskCategory model.Category) (*Resul
 	// (для installment не используется → nil).
 	p.Subcategory = normalizeSubcategory(p.Subcategory, p.Category)
 
+	// Язык: последний барьер против смешения ru/tg и транслита латиницей —
+	// промпт этому учит, но AI иногда путает (см. п.1 жалобы на парсер).
+	var lw []string
+	p, lw = normalizeLanguageFields(p)
+	warnings = append(warnings, lw...)
+	if err := validateNamePresent(p); err != nil {
+		return nil, err
+	}
+
+	// is_special: рефинансирование/реструктуризация по умолчанию — «особые»,
+	// даже если AI не проставил флаг (defense-in-depth, не только промпт).
+	if !p.IsSpecial && (isRefinanceOrRestructuring(p)) {
+		p.IsSpecial = true
+	}
+
+	// key_conditions/documents: чистим пустые/дублирующиеся пункты — провайдеры
+	// без strict json_schema (DeepSeek) не всегда соблюдают maxItems/minLength.
+	p.KeyConditionsRU = normalizeStringList(p.KeyConditionsRU)
+	p.KeyConditionsTG = normalizeStringList(p.KeyConditionsTG)
+	p.DocumentsRU = normalizeStringList(p.DocumentsRU)
+	p.DocumentsTG = normalizeStringList(p.DocumentsTG)
+
 	return &Result{Product: p, Warnings: warnings}, nil
+}
+
+// maxStringListItems — потолок пунктов в key_conditions/documents (защита от
+// провайдеров без strict json_schema, не уважающих maxItems в схеме).
+const maxStringListItems = 20
+
+// normalizeStringList обрезает пробелы, отбрасывает пустые и дублирующиеся
+// пункты (без учёта регистра), режет по maxStringListItems. Пустой результат → nil.
+func normalizeStringList(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(items))
+	out := make([]string, 0, len(items))
+	for _, s := range items {
+		v := strings.TrimSpace(s)
+		if v == "" {
+			continue
+		}
+		key := strings.ToLower(v)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, v)
+		if len(out) >= maxStringListItems {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// isLegalEntityOnly: продукт явно адресован юрлицам/ИП, а не физлицам.
+// Парсер собирает только розничные продукты для физических лиц (CLAUDE.md).
+var legalEntityKeywords = []string{
+	"юридических лиц", "юридическим лицам", "юр. лиц", "юрлиц",
+	"для ип", "индивидуальных предпринимателей", "корпоративн",
+	"corporate client", "legal entit", "шахсони ҳуқуқӣ",
+}
+
+func isLegalEntityOnly(p model.ParsedProduct) bool {
+	for _, s := range []*string{p.NameRU, p.NameTG, p.DescriptionRU, p.DescriptionTG} {
+		if s == nil {
+			continue
+		}
+		low := strings.ToLower(*s)
+		for _, kw := range legalEntityKeywords {
+			if strings.Contains(low, kw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// specialKeywords: маркеры рефинансирования/реструктуризации/легализации средств
+// и прочих аномальных продуктов (ru + распространённые таджикские заимствования
+// содержат тот же корень). «Легализация» — явный пример из миграции is_special.
+var specialKeywords = []string{"рефинанс", "реструктуриз", "restructur", "refinanc", "легализ", "legaliz"}
+
+func isRefinanceOrRestructuring(p model.ParsedProduct) bool {
+	if p.Subcategory != nil && *p.Subcategory == "refinance" {
+		return true
+	}
+	for _, s := range []*string{p.NameRU, p.NameTG, p.DescriptionRU, p.DescriptionTG} {
+		if s == nil {
+			continue
+		}
+		low := strings.ToLower(*s)
+		for _, kw := range specialKeywords {
+			if strings.Contains(low, kw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tajikOnlyLetters — буквы таджикского алфавита, отсутствующие в русском.
+// Их наличие — надёжный сигнал, что текст на самом деле таджикский, а не
+// русский (даже если AI положил его в name_ru/description_ru).
+const tajikOnlyLetters = "ғӣқӯҳҷҒӢҚӮҲҶ"
+
+func containsTajikOnlyLetters(s string) bool {
+	return strings.ContainsAny(s, tajikOnlyLetters)
+}
+
+// isLatinOnly: в строке есть латинские буквы и нет ни одной кириллической —
+// это транслит/английский текст, недопустимый в name_ru/name_tg/description_*.
+func isLatinOnly(s string) bool {
+	hasLatin := false
+	for _, r := range s {
+		if unicode.Is(unicode.Cyrillic, r) {
+			return false
+		}
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			hasLatin = true
+		}
+	}
+	return hasLatin
+}
+
+// normalizeLanguageFields чинит перепутанные ru/tg поля и вычищает транслит:
+//   - строка с уникально-таджикскими буквами в *_ru при пустом *_tg переносится в *_tg;
+//   - строка без единой кириллической буквы (латиница/транслит) обнуляется.
+func normalizeLanguageFields(p model.ParsedProduct) (model.ParsedProduct, []string) {
+	var warnings []string
+
+	fix := func(ru, tg **string, field string) {
+		if *ru != nil {
+			v := strings.TrimSpace(**ru)
+			switch {
+			case v != "" && containsTajikOnlyLetters(v) && (*tg == nil || strings.TrimSpace(**tg) == ""):
+				warnings = append(warnings, fmt.Sprintf("%s: таджикский текст был в *_ru, перенесён в *_tg", field))
+				*tg = &v
+				*ru = nil
+			case isLatinOnly(v):
+				warnings = append(warnings, fmt.Sprintf("%s: латиница/транслит в *_ru обнулена", field))
+				*ru = nil
+			}
+		}
+		if *tg != nil && isLatinOnly(strings.TrimSpace(**tg)) {
+			warnings = append(warnings, fmt.Sprintf("%s: латиница/транслит в *_tg обнулена", field))
+			*tg = nil
+		}
+	}
+
+	fix(&p.NameRU, &p.NameTG, "name")
+	fix(&p.DescriptionRU, &p.DescriptionTG, "description")
+
+	return p, warnings
 }
 
 // validateNamePresent: хотя бы одно из name_ru/name_tg непустое после trim (§5.5).

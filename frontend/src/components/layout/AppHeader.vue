@@ -17,7 +17,7 @@ function closeMenu() {
 <template>
   <header class="header">
     <div class="container header__inner">
-      <RouterLink to="/credit" class="brand" @click="closeMenu">
+      <RouterLink to="/" class="brand" @click="closeMenu">
         <span class="brand__mark" aria-hidden="true">
           <svg viewBox="0 0 32 32">
             <rect width="32" height="32" rx="7" fill="var(--color-primary)" />

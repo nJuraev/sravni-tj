@@ -1,5 +1,8 @@
 import type {
   BankListResponse,
+  BankResponse,
+  BestRateQuery,
+  BestRateResponse,
   LeadRequest,
   LeadResponse,
   ProductListResponse,
@@ -9,7 +12,9 @@ import type {
 import type { Locale } from '@/types/api'
 import { ApiError } from './errors'
 import {
+  mockGetBank,
   mockGetBanks,
+  mockGetBestRate,
   mockGetProduct,
   mockGetProducts,
   mockPostLead,
@@ -104,6 +109,21 @@ export const api = {
   getBanks(): Promise<BankListResponse> {
     if (USE_MOCKS) return mockGetBanks()
     return request<BankListResponse>('/banks')
+  },
+
+  getBank(id: number): Promise<BankResponse> {
+    if (USE_MOCKS) return mockGetBank(id)
+    return request<BankResponse>(`/banks/${id}`)
+  },
+
+  getBestRate(query: BestRateQuery): Promise<BestRateResponse> {
+    if (USE_MOCKS) return mockGetBestRate(query)
+    const params = new URLSearchParams({
+      currency: query.currency,
+      category: query.category,
+      op: query.op,
+    })
+    return request<BestRateResponse>(`/rates/best?${params.toString()}`)
   },
 
   createLead(body: LeadRequest): Promise<LeadResponse> {

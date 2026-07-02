@@ -33,6 +33,8 @@ class AdminBankResource extends JsonResource
             'phone' => $this->phone,
             'address_ru' => $this->address_ru,
             'address_tg' => $this->address_tg,
+            'about_ru' => $this->about_ru,
+            'about_tg' => $this->about_tg,
             'logo_url' => $this->logo_url,
             // Счётчики (присутствуют, если загружены через withCount).
             'products_count' => $this->whenCounted('products'),
