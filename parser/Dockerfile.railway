@@ -2,10 +2,11 @@
 # отдельный Dockerfile (dev-образ + volume-mount исходников, см. docker-compose.yml)
 # — этот файл его не трогает и не заменяет.
 #
-# Один cron-прогон выполняет ВСЕ три этапа последовательно: discover (находит
-# новые страницы продуктов по bank_parse_instructions → bank_source_urls) →
-# parser (парсит продукты по bank_source_urls) → rates (курсы валют). Порядок
-# важен: discover должен наполнить bank_source_urls ДО того, как parser их читает.
+# Один cron-прогон выполняет discover (находит новые страницы продуктов по
+# bank_parse_instructions → bank_source_urls) → parser (парсит продукты по
+# bank_source_urls) последовательно. Порядок важен: discover должен наполнить
+# bank_source_urls ДО того, как parser их читает.
+# Курсы валют — отдельный сервис parser-rates, см. Dockerfile.rates.railway.
 FROM golang:1.23-alpine AS build
 
 RUN apk add --no-cache git ca-certificates
@@ -18,7 +19,6 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /app/discover ./cmd/discover
 RUN CGO_ENABLED=0 go build -o /app/parser ./cmd/parser
-RUN CGO_ENABLED=0 go build -o /app/rates ./cmd/rates
 
 FROM alpine:3.20
 
@@ -27,7 +27,6 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=build /app/discover ./discover
 COPY --from=build /app/parser ./parser
-COPY --from=build /app/rates ./rates
 COPY run.sh ./run.sh
 RUN chmod +x run.sh
 

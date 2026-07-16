@@ -1,13 +1,14 @@
 // Package rates — пайплайн парсинга курсов валют.
 //
-// По bank_parse_instructions(kind='rates'): scrape страницы курсов (Jina,
-// вкладки в статичном HTML) → AI извлекает buy/sell по валютам и категориям
-// (cash/transfer) → валидация → upsert bank_currency_rates.
+// По bank_parse_instructions(kind='rates'): scrape страницы курсов (Direct/
+// Firecrawl — по bank_parse_instructions.scraper) → AI извлекает buy/sell по
+// валютам и категориям (cash/transfer) → валидация → upsert bank_currency_rates.
 package rates
 
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"regexp"
 	"strings"
 	"sync"
@@ -22,16 +23,17 @@ import (
 
 // Rater связывает зависимости пайплайна курсов.
 type Rater struct {
-	cfg     *config.Config
-	st      store.Store
-	scraper scrape.Scraper
-	ai      extract.RatesExtractor
-	log     *slog.Logger
+	cfg        *config.Config
+	st         store.Store
+	scrapers   *scrape.Scrapers
+	ai         extract.RatesExtractor
+	httpClient *http.Client // прямой GET для детерминированного пути (in.RateRule != nil), без Scraper
+	log        *slog.Logger
 }
 
 // New создаёт оркестратор курсов.
-func New(cfg *config.Config, st store.Store, scraper scrape.Scraper, ai extract.RatesExtractor, log *slog.Logger) *Rater {
-	return &Rater{cfg: cfg, st: st, scraper: scraper, ai: ai, log: log}
+func New(cfg *config.Config, st store.Store, scrapers *scrape.Scrapers, ai extract.RatesExtractor, httpClient *http.Client, log *slog.Logger) *Rater {
+	return &Rater{cfg: cfg, st: st, scrapers: scrapers, ai: ai, httpClient: httpClient, log: log}
 }
 
 // Run обрабатывает все активные инструкции курсов (с учётом Concurrency).
@@ -86,6 +88,16 @@ func filterInstructionsByBank(instrs []model.DiscoveryInstruction, bankIDs []int
 
 func (r *Rater) process(ctx context.Context, in model.DiscoveryInstruction) {
 	startedAt := time.Now()
+
+	// Детерминированный путь (rate_rule задан): без Scraper, без AI —
+	// прямой GET + чтение по плоскому JSON-пути. Для чисел, которые видит
+	// пользователь, детерминированный разбор надёжнее и дешевле AI (особенно
+	// при ежечасном прогоне). Не задан — падаем на старый AI-путь ниже.
+	if in.RateRule != nil {
+		r.processDeterministic(ctx, in, startedAt)
+		return
+	}
+
 	notes := ""
 	if in.Notes != nil {
 		notes = *in.Notes
@@ -97,7 +109,7 @@ func (r *Rater) process(ctx context.Context, in model.DiscoveryInstruction) {
 	rawHTML, err := func() (string, error) {
 		sctx, cancel := context.WithTimeout(ctx, r.cfg.HTTPTimeout)
 		defer cancel()
-		return r.scraper.ScrapeRaw(sctx, in.StartURL)
+		return r.scrapers.For(in.Scraper).ScrapeRaw(sctx, in.StartURL)
 	}()
 	if err != nil {
 		r.log.Warn("rates: scrape страницы курсов не удался", "instruction_id", in.ID, "url", in.StartURL, "err", err)
@@ -116,8 +128,14 @@ func (r *Rater) process(ctx context.Context, in model.DiscoveryInstruction) {
 		return
 	}
 
+	r.saveRates(ctx, in, startedAt, ext.Result.Rates)
+}
+
+// saveRates — общий хвост AI- и детерминированного пути: валидация+upsert
+// строк курса, touch last_run_at, итоговый лог.
+func (r *Rater) saveRates(ctx context.Context, in model.DiscoveryInstruction, startedAt time.Time, rows []model.RateRow) {
 	saved, skipped := 0, 0
-	for _, row := range ext.Result.Rates {
+	for _, row := range rows {
 		rw, ok := normalize(in.BankID, row, startedAt)
 		if !ok {
 			skipped++

@@ -26,6 +26,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $status
  * @property bool $is_partner
  * @property string|null $logo_url
+ * @property string|null $lang_url_rule_type Правило вывода tj-URL из ru-URL для парсера (query_param|path_replace); см. Go model.LangURLRule
+ * @property array|null $lang_url_rule_params
  */
 class Bank extends Model
 {

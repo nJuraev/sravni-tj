@@ -28,16 +28,16 @@ const maxLinksPerInstruction = 60
 
 // Discoverer связывает зависимости discovery-пайплайна.
 type Discoverer struct {
-	cfg     *config.Config
-	st      store.Store
-	scraper scrape.Scraper
-	ai      extract.AIExtractor
-	log     *slog.Logger
+	cfg      *config.Config
+	st       store.Store
+	scrapers *scrape.Scrapers
+	ai       extract.AIExtractor
+	log      *slog.Logger
 }
 
 // New создаёт discovery-оркестратор.
-func New(cfg *config.Config, st store.Store, scraper scrape.Scraper, ai extract.AIExtractor, log *slog.Logger) *Discoverer {
-	return &Discoverer{cfg: cfg, st: st, scraper: scraper, ai: ai, log: log}
+func New(cfg *config.Config, st store.Store, scrapers *scrape.Scrapers, ai extract.AIExtractor, log *slog.Logger) *Discoverer {
+	return &Discoverer{cfg: cfg, st: st, scrapers: scrapers, ai: ai, log: log}
 }
 
 // Run обрабатывает все активные инструкции discovery (с учётом Concurrency).
@@ -98,7 +98,7 @@ func (d *Discoverer) process(ctx context.Context, in model.DiscoveryInstruction)
 	markdown, err := func() (string, error) {
 		sctx, cancel := context.WithTimeout(ctx, d.cfg.HTTPTimeout)
 		defer cancel()
-		return d.scraper.Scrape(sctx, in.StartURL)
+		return d.scrapers.For(in.Scraper).Scrape(sctx, in.StartURL)
 	}()
 	if err != nil {
 		d.log.Warn("discovery: scrape стартовой не удался", "instruction_id", in.ID, "url", in.StartURL, "err", err)

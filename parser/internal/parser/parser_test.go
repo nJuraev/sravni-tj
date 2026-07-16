@@ -12,6 +12,7 @@ import (
 	"sravni/parser/internal/config"
 	"sravni/parser/internal/extract"
 	"sravni/parser/internal/model"
+	"sravni/parser/internal/scrape"
 	"sravni/parser/internal/store"
 )
 
@@ -111,6 +112,12 @@ func (m *mockScraper) ScrapeRaw(ctx context.Context, url string) (string, error)
 	return "<html>сырой</html>", nil
 }
 
+// mockScrapers оборачивает один mockScraper в Scrapers (Own=Firecrawl=m) —
+// в тестах пайплайна выбор own/firecrawl не важен, важно поведение Scraper.
+func mockScrapers(m scrape.Scraper) *scrape.Scrapers {
+	return &scrape.Scrapers{Own: m, Firecrawl: m}
+}
+
 // mockAI возвращает заранее заданный результат извлечения.
 type mockAI struct {
 	result model.ExtractionResult
@@ -170,7 +177,7 @@ func depositTask() model.SourceTask {
 func TestDebugLog_True_WritesParserRuns(t *testing.T) {
 	st := &mockStore{tasks: []model.SourceTask{depositTask()}}
 	ai := &mockAI{result: model.ExtractionResult{Products: []model.ParsedProduct{validDeposit()}}, raw: `{"products":[...]}`}
-	p := New(baseCfg(true), st, &mockScraper{}, ai, quietLogger())
+	p := New(baseCfg(true), st, mockScrapers(&mockScraper{}), ai, nil, quietLogger())
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatalf("Run вернул ошибку: %v", err)
@@ -192,7 +199,7 @@ func TestDebugLog_True_WritesParserRuns(t *testing.T) {
 func TestDebugLog_False_NoParserRuns(t *testing.T) {
 	st := &mockStore{tasks: []model.SourceTask{depositTask()}}
 	ai := &mockAI{result: model.ExtractionResult{Products: []model.ParsedProduct{validDeposit()}}}
-	p := New(baseCfg(false), st, &mockScraper{}, ai, quietLogger())
+	p := New(baseCfg(false), st, mockScrapers(&mockScraper{}), ai, nil, quietLogger())
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatalf("Run вернул ошибку: %v", err)
@@ -216,7 +223,7 @@ func TestPartialRejection_ValidWrittenInvalidSkipped(t *testing.T) {
 
 	st := &mockStore{tasks: []model.SourceTask{depositTask()}}
 	ai := &mockAI{result: model.ExtractionResult{Products: []model.ParsedProduct{validDeposit(), bad}}}
-	p := New(baseCfg(true), st, &mockScraper{}, ai, quietLogger())
+	p := New(baseCfg(true), st, mockScrapers(&mockScraper{}), ai, nil, quietLogger())
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -231,7 +238,7 @@ func TestPartialRejection_ValidWrittenInvalidSkipped(t *testing.T) {
 
 func TestScrapeError_NoUpsert_RunError(t *testing.T) {
 	st := &mockStore{tasks: []model.SourceTask{depositTask()}}
-	p := New(baseCfg(true), st, &mockScraper{err: errors.New("boom")}, &mockAI{}, quietLogger())
+	p := New(baseCfg(true), st, mockScrapers(&mockScraper{err: errors.New("boom")}), &mockAI{}, nil, quietLogger())
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatalf("Run не должен возвращать ошибку при провале задачи (§7.3): %v", err)
@@ -247,7 +254,7 @@ func TestScrapeError_NoUpsert_RunError(t *testing.T) {
 func TestEmptyProducts_NoOutdating(t *testing.T) {
 	st := &mockStore{tasks: []model.SourceTask{depositTask()}}
 	ai := &mockAI{result: model.ExtractionResult{Products: nil}} // AI вернул []
-	p := New(baseCfg(true), st, &mockScraper{}, ai, quietLogger())
+	p := New(baseCfg(true), st, mockScrapers(&mockScraper{}), ai, nil, quietLogger())
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatalf("Run: %v", err)

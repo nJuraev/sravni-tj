@@ -7,7 +7,10 @@ package parser
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -23,16 +26,17 @@ import (
 
 // Parser связывает зависимости пайплайна.
 type Parser struct {
-	cfg     *config.Config
-	st      store.Store
-	scraper scrape.Scraper
-	ai      extract.AIExtractor
-	log     *slog.Logger
+	cfg        *config.Config
+	st         store.Store
+	scrapers   *scrape.Scrapers
+	ai         extract.AIExtractor
+	httpClient *http.Client // прямой GET для LangURLRule.Type=="header" (bypass Direct/Firecrawl-обёртки)
+	log        *slog.Logger
 }
 
 // New создаёт оркестратор.
-func New(cfg *config.Config, st store.Store, scraper scrape.Scraper, ai extract.AIExtractor, log *slog.Logger) *Parser {
-	return &Parser{cfg: cfg, st: st, scraper: scraper, ai: ai, log: log}
+func New(cfg *config.Config, st store.Store, scrapers *scrape.Scrapers, ai extract.AIExtractor, httpClient *http.Client, log *slog.Logger) *Parser {
+	return &Parser{cfg: cfg, st: st, scrapers: scrapers, ai: ai, httpClient: httpClient, log: log}
 }
 
 // taskOutcome — внутренний результат обработки задачи для логирования run.
@@ -115,17 +119,28 @@ func (p *Parser) processTask(ctx context.Context, task model.SourceTask) {
 
 // runPipeline — собственно конвейер одной задачи. Возвращает outcome для лога.
 func (p *Parser) runPipeline(ctx context.Context, task model.SourceTask, startedAt time.Time) (outcome taskOutcome) {
-	// Вход (markdown листинга), отправленный в AI, попадает в parser_runs даже
-	// при последующей ошибке — для отладки «что именно ушло в модель».
+	// Вход, отправленный в AI (markdown листинга либо сырой JSON array-split
+	// источника), попадает в parser_runs даже при последующей ошибке — для
+	// отладки «что именно ушло в модель».
 	var markdown string
 	defer func() { outcome.inputMarkdown = markdown }()
 
+	// Array-split режим (task.ArrayPath задан): источник — JSON-массив
+	// продуктов целиком (SSB/ICB/Арванд), на КАЖДЫЙ элемент — отдельный
+	// маленький AI-вызов, вместо одного гигантского на весь каталог (см.
+	// arraysplit.go — почему: большие каталоги+билингва упирались в потолок
+	// вывода модели).
+	if task.ArrayPath != nil {
+		products, raw, err := p.runArraySplit(ctx, task)
+		markdown = raw
+		if err != nil {
+			return taskOutcome{status: store.RunError, errMessage: "scrape_error: " + err.Error()}
+		}
+		return p.finishPipeline(ctx, task, startedAt, products, "")
+	}
+
 	// --- Этап 1: SCRAPE (с ретраями транзиентных ошибок) ---
-	md, err := retry(ctx, func() (string, error) {
-		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
-		defer cancel()
-		return p.scraper.Scrape(sctx, task.URL)
-	})
+	md, err := p.fetchBilingual(ctx, task.URL, task.LangURLRule, task.Scraper, task.ID)
 	if err != nil {
 		return taskOutcome{status: store.RunError, errMessage: "scrape_error: " + err.Error()}
 	}
@@ -160,6 +175,12 @@ func (p *Parser) runPipeline(ctx context.Context, task model.SourceTask, started
 		products = p.gatherFromLinks(ctx, task, ext.Result.ProductLinks)
 	}
 
+	return p.finishPipeline(ctx, task, startedAt, products, aiRaw)
+}
+
+// finishPipeline — общий хвост обычного и array-split путей: валидация,
+// upsert, устаревание, итоговый статус задачи.
+func (p *Parser) finishPipeline(ctx context.Context, task model.SourceTask, startedAt time.Time, products []productSource, aiRaw string) taskOutcome {
 	// --- Этап 3: VALIDATE + split-by-currency + Этап 4: UPSERT ---
 	upserted, anyRejected, dbErr := p.persistProducts(ctx, task, products)
 	if dbErr != nil {
@@ -362,11 +383,7 @@ func (p *Parser) gatherFromLinks(ctx context.Context, task model.SourceTask, lin
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			markdown, err := retry(ctx, func() (string, error) {
-				sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
-				defer cancel()
-				return p.scraper.Scrape(sctx, j.url)
-			})
+			markdown, err := p.fetchBilingual(ctx, j.url, task.LangURLRule, task.Scraper, task.ID)
 			if err != nil {
 				p.log.Warn("index: scrape детали не удался", "task_id", task.ID, "url", j.url, "err", err)
 				return
@@ -397,6 +414,175 @@ func (p *Parser) gatherFromLinks(ctx context.Context, task model.SourceTask, lin
 	}
 	wg.Wait()
 	return out
+}
+
+// fetchBilingual — этап 1 (SCRAPE) целиком: получает markdown/текст страницы
+// на ru и, если у банка задано LangURLRule, доскрейпливает tj-версию и
+// склеивает — единый вход и для прямого пути, и для index-режима деталей.
+//
+// header-правило (напр. ICB: JSON API, язык только по заголовку запроса) —
+// ОБА фетча идут прямым HTTP GET, Scraper не участвует вообще (нужно именно
+// затем, чтобы обойти anti-bot/SSRF-фильтры рендер-скрейперов на некоторых
+// банках — см. ICB). query_param/path_replace — как раньше: primary через
+// Scraper по scraperMode (task.Scraper), secondary (если правило вывело URL) —
+// тоже через него же.
+func (p *Parser) fetchBilingual(ctx context.Context, primaryURL string, rule *model.LangURLRule, scraperMode string, taskID int64) (string, error) {
+	if rule != nil && rule.Type == "header" {
+		return p.fetchHeaderBilingual(ctx, primaryURL, rule, taskID)
+	}
+
+	scraper := p.scrapers.For(scraperMode)
+	primaryMarkdown, err := retry(ctx, func() (string, error) {
+		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
+		defer cancel()
+		return scraper.Scrape(sctx, primaryURL)
+	})
+	if err != nil {
+		return "", err
+	}
+
+	secURL, ok := deriveSecondaryURL(primaryURL, rule)
+	if !ok || secURL == primaryURL {
+		return primaryMarkdown, nil
+	}
+	secMarkdown, err := retry(ctx, func() (string, error) {
+		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
+		defer cancel()
+		return scraper.Scrape(sctx, secURL)
+	})
+	if err != nil {
+		p.log.Warn("bilingual: скрейп tj-версии не удался", "task_id", taskID, "url", secURL, "err", err)
+		return primaryMarkdown, nil
+	}
+	return mergeBilingual(primaryMarkdown, secMarkdown), nil
+}
+
+// fetchHeaderBilingual делает ДВА прямых HTTP GET на ОДИН И ТОТ ЖЕ url —
+// с разным значением rule.Params["header"] (ru/tj) — и склеивает тела.
+// Требует rule.Params["header"]/["ru"]/["tj"] все заданы (comma-ok, "" может
+// быть легитимным значением заголовка ровно как и для URL-правил).
+func (p *Parser) fetchHeaderBilingual(ctx context.Context, primaryURL string, rule *model.LangURLRule, taskID int64) (string, error) {
+	header, hasHeader := rule.Params["header"]
+	ruVal, hasRU := rule.Params["ru"]
+	tjVal, hasTJ := rule.Params["tj"]
+	if header == "" || !hasHeader || !hasRU || !hasTJ {
+		return "", fmt.Errorf("fetchHeaderBilingual: неполное правило header для задачи %d", taskID)
+	}
+
+	primaryBody, err := retry(ctx, func() (string, error) {
+		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
+		defer cancel()
+		return fetchWithHeader(sctx, p.httpClient, primaryURL, header, ruVal)
+	})
+	if err != nil {
+		return "", err
+	}
+	if ruVal == tjVal {
+		return primaryBody, nil
+	}
+
+	secBody, err := retry(ctx, func() (string, error) {
+		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
+		defer cancel()
+		return fetchWithHeader(sctx, p.httpClient, primaryURL, header, tjVal)
+	})
+	if err != nil {
+		p.log.Warn("bilingual: header-фетч tj-версии не удался", "task_id", taskID, "url", primaryURL, "err", err)
+		return primaryBody, nil
+	}
+	return mergeBilingual(primaryBody, secBody), nil
+}
+
+// fetchWithHeader — прямой HTTP GET с одним кастомным заголовком, без
+// Scraper (Direct/Firecrawl). Используется ТОЛЬКО для header-правила (JSON API).
+func fetchWithHeader(ctx context.Context, client *http.Client, rawURL, header, value string) (string, error) {
+	return httpGetBody(ctx, client, rawURL, func(req *http.Request) {
+		req.Header.Set(header, value)
+	})
+}
+
+// fetchRaw — прямой HTTP GET без заголовков-подсказок, без Scraper.
+// Используется array-split режимом (JSON API без языкового заголовка —
+// SSB/Арванд) и как ru-фетч для header-правила внутри array-split.
+func fetchRaw(ctx context.Context, client *http.Client, rawURL string) (string, error) {
+	return httpGetBody(ctx, client, rawURL, nil)
+}
+
+// httpGetBody — общее тело прямого GET-запроса (без Scraper): опционально
+// применяет setHeader к запросу, читает и валидирует ответ.
+func httpGetBody(ctx context.Context, client *http.Client, rawURL string, setHeader func(*http.Request)) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("httpGetBody: new request: %w", err)
+	}
+	if setHeader != nil {
+		setHeader(req)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("httpGetBody: do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body := raw
+		if len(body) > 500 {
+			body = body[:500]
+		}
+		return "", &scrape.HTTPError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+	body := strings.TrimSpace(string(raw))
+	if body == "" {
+		return "", fmt.Errorf("httpGetBody: пустой ответ")
+	}
+	return body, nil
+}
+
+// deriveSecondaryURL выводит tj-URL из ru-URL по правилу банка.
+// ok=false — правила нет, или его недостаточно для вывода (не искать tj).
+//
+// ВАЖНО: tj-значение/маркер может быть пустой строкой на законных основаниях
+// (напр. Ориёнбонк: ru-версия под префиксом "/ru/", tj — БЕЗ префикса вовсе,
+// т.е. params["tj"]=""). Поэтому проверяем НАЛИЧИЕ ключа (comma-ok), а не
+// "не пустая ли строка" — иначе легитимный "" отбрасывался бы как «нет правила».
+func deriveSecondaryURL(primary string, rule *model.LangURLRule) (string, bool) {
+	if rule == nil {
+		return "", false
+	}
+	switch rule.Type {
+	case "query_param":
+		param, hasParam := rule.Params["param"]
+		tj, hasTJ := rule.Params["tj"]
+		if param == "" || !hasParam || !hasTJ {
+			return "", false
+		}
+		u, err := url.Parse(primary)
+		if err != nil {
+			return "", false
+		}
+		q := u.Query()
+		q.Set(param, tj)
+		u.RawQuery = q.Encode()
+		return u.String(), true
+	case "path_replace":
+		ru, hasRU := rule.Params["ru"]
+		tj, hasTJ := rule.Params["tj"]
+		if ru == "" || !hasRU || !hasTJ || !strings.Contains(primary, ru) {
+			return "", false
+		}
+		return strings.Replace(primary, ru, tj, 1), true
+	default:
+		return "", false
+	}
+}
+
+// mergeBilingual склеивает ru- и tj-версии одной страницы в один текст для
+// AI: промпт уже умеет разносить смешанный ru+tj контент по name_ru/name_tg
+// (extract.go), нужно лишь дать ему обе версии сразу.
+func mergeBilingual(ru, tj string) string {
+	return "Версия страницы на русском:\n" + ru + "\n\n---\n\nВерсия страницы на таджикском:\n" + tj
 }
 
 // sameSite сравнивает регистрируемые домены (последние два лейбла) двух URL,

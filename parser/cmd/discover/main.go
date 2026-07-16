@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -50,9 +49,9 @@ func run(log *slog.Logger) error {
 	}
 	defer st.Close()
 
-	httpClient := &http.Client{Transport: http.DefaultTransport}
+	httpClient := scrape.NewHTTPClient()
 
-	scraper, err := scrape.New(cfg, httpClient)
+	scrapers, err := scrape.New(cfg, httpClient)
 	if err != nil {
 		return err
 	}
@@ -61,6 +60,6 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	d := discover.New(cfg, st, scraper, ai, log)
+	d := discover.New(cfg, st, scrapers, ai, log)
 	return d.Run(ctx)
 }

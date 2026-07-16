@@ -9,7 +9,7 @@ import {
 import { AddOutline, ArrowBackOutline } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
-import type { AdminBank, AdminProduct, FeatureKey, ProductPayload } from '@/types/admin'
+import type { AdminBank, AdminProduct, BankPayload, FeatureKey, ProductPayload } from '@/types/admin'
 
 const props = defineProps<{ id: number }>()
 const router = useRouter()
@@ -36,6 +36,22 @@ const editing = ref<AdminProduct | null>(null)
 const saving = ref(false)
 const fieldErrors = reactive<Record<string, string>>({})
 const featureList = ref<FeatureKey[]>([])
+
+const showBankModal = ref(false)
+const bankSaving = ref(false)
+const bankFieldErrors = reactive<Record<string, string>>({})
+const bankStatusOptions = [
+  { label: 'Активен', value: 'active' },
+  { label: 'Выключен', value: 'inactive' },
+]
+function emptyBankForm(): BankPayload {
+  return {
+    name_ru: '', name_tg: '', slug: '', status: 'active', is_partner: false,
+    contact_email: '', website: '', phone: '', address_ru: '', address_tg: '',
+    about_ru: '', about_tg: '', logo_url: '',
+  }
+}
+const bankForm = reactive<BankPayload>(emptyBankForm())
 
 function emptyForm(): ProductPayload {
   return {
@@ -72,6 +88,42 @@ function openCreate() {
   clearErrors()
   showModal.value = true
 }
+function clearBankErrors() { for (const k of Object.keys(bankFieldErrors)) delete bankFieldErrors[k] }
+
+function openBankEdit() {
+  if (!bank.value) return
+  const b = bank.value
+  Object.assign(bankForm, {
+    name_ru: b.name_ru, name_tg: b.name_tg ?? '', slug: b.slug, status: b.status,
+    is_partner: b.is_partner, contact_email: b.contact_email ?? '', website: b.website ?? '',
+    phone: b.phone ?? '', address_ru: b.address_ru ?? '', address_tg: b.address_tg ?? '',
+    about_ru: b.about_ru ?? '', about_tg: b.about_tg ?? '', logo_url: b.logo_url ?? '',
+  })
+  clearBankErrors()
+  showBankModal.value = true
+}
+
+async function saveBank() {
+  if (!bank.value) return
+  bankSaving.value = true
+  clearBankErrors()
+  try {
+    const res = await adminApi.updateBank(bank.value.id, { ...bankForm })
+    bank.value = res.data
+    message.success('Банк обновлён')
+    showBankModal.value = false
+  } catch (e) {
+    if (e instanceof ApiError && e.isValidation) {
+      for (const [k, v] of Object.entries(e.fieldErrors)) bankFieldErrors[k] = v[0]
+      message.error('Проверьте поля формы')
+    } else {
+      message.error(e instanceof ApiError ? e.message : 'Ошибка сохранения')
+    }
+  } finally {
+    bankSaving.value = false
+  }
+}
+
 function openEdit(p: AdminProduct) {
   editing.value = p
   Object.assign(form, {
@@ -182,6 +234,9 @@ const columns: DataTableColumns<AdminProduct> = [
         <template #icon><n-icon><AddOutline /></n-icon></template>
         Продукт
       </n-button>
+      <n-button v-else-if="tab === 'info'" type="primary" @click="openBankEdit">
+        Редактировать
+      </n-button>
     </div>
 
     <n-tabs v-model:value="tab" type="line" animated>
@@ -198,7 +253,10 @@ const columns: DataTableColumns<AdminProduct> = [
             <n-descriptions-item label="Статус">{{ bank?.status }}</n-descriptions-item>
             <n-descriptions-item label="Партнёр">{{ bank?.is_partner ? 'да' : 'нет' }}</n-descriptions-item>
             <n-descriptions-item label="Email">{{ bank?.contact_email ?? '—' }}</n-descriptions-item>
-            <n-descriptions-item label="Сайт">{{ bank?.website ?? '—' }}</n-descriptions-item>
+            <n-descriptions-item label="Сайт">
+              <a v-if="bank?.website" :href="bank.website" target="_blank" rel="noopener noreferrer">{{ bank.website }}</a>
+              <template v-else>—</template>
+            </n-descriptions-item>
             <n-descriptions-item label="Телефон">{{ bank?.phone ?? '—' }}</n-descriptions-item>
             <n-descriptions-item label="Адрес" :span="2">{{ bank?.address_ru ?? '—' }}</n-descriptions-item>
             <n-descriptions-item label="Заявок">{{ bank?.leads_count ?? 0 }}</n-descriptions-item>
@@ -206,6 +264,68 @@ const columns: DataTableColumns<AdminProduct> = [
         </n-card>
       </n-tab-pane>
     </n-tabs>
+
+    <n-modal
+      v-model:show="showBankModal" preset="card" style="width: 640px"
+      title="Редактировать банк"
+    >
+      <n-form label-placement="top" @submit.prevent="saveBank">
+        <n-space :wrap-item="false" style="gap: 16px" vertical>
+          <div class="grid2">
+            <n-form-item label="Название (RU)" :validation-status="bankFieldErrors.name_ru ? 'error' : undefined" :feedback="bankFieldErrors.name_ru">
+              <n-input v-model:value="bankForm.name_ru" />
+            </n-form-item>
+            <n-form-item label="Название (TG)">
+              <n-input v-model:value="bankForm.name_tg" />
+            </n-form-item>
+          </div>
+          <div class="grid2">
+            <n-form-item label="Slug" :validation-status="bankFieldErrors.slug ? 'error' : undefined" :feedback="bankFieldErrors.slug">
+              <n-input v-model:value="bankForm.slug" placeholder="eskhata" />
+            </n-form-item>
+            <n-form-item label="Статус">
+              <n-select v-model:value="bankForm.status" :options="bankStatusOptions" />
+            </n-form-item>
+          </div>
+          <div class="grid2">
+            <n-form-item label="Email (справочный)" :validation-status="bankFieldErrors.contact_email ? 'error' : undefined" :feedback="bankFieldErrors.contact_email">
+              <n-input v-model:value="bankForm.contact_email" />
+            </n-form-item>
+            <n-form-item label="Сайт">
+              <n-input v-model:value="bankForm.website" />
+            </n-form-item>
+          </div>
+          <div class="grid2">
+            <n-form-item label="Телефон">
+              <n-input v-model:value="bankForm.phone" />
+            </n-form-item>
+            <n-form-item label="Логотип (URL)">
+              <n-input v-model:value="bankForm.logo_url" />
+            </n-form-item>
+          </div>
+          <n-form-item label="Адрес (RU)">
+            <n-input v-model:value="bankForm.address_ru" />
+          </n-form-item>
+          <div class="grid2">
+            <n-form-item label="О банке (RU)">
+              <n-input v-model:value="bankForm.about_ru" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" />
+            </n-form-item>
+            <n-form-item label="О банке (TG)">
+              <n-input v-model:value="bankForm.about_tg" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" />
+            </n-form-item>
+          </div>
+          <n-form-item label="Партнёр">
+            <n-switch v-model:value="bankForm.is_partner" />
+          </n-form-item>
+        </n-space>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showBankModal = false">Отмена</n-button>
+          <n-button type="primary" :loading="bankSaving" @click="saveBank">Сохранить</n-button>
+        </n-space>
+      </template>
+    </n-modal>
 
     <n-modal
       v-model:show="showModal" preset="card" style="width: 680px"

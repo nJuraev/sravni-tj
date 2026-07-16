@@ -12,14 +12,6 @@ import (
 	"time"
 )
 
-// ScraperProvider — провайдер скрейпинга HTML→Markdown.
-type ScraperProvider string
-
-const (
-	ScraperFirecrawl ScraperProvider = "firecrawl"
-	ScraperJina      ScraperProvider = "jina"
-)
-
 // AIProvider — провайдер AI для извлечения структуры.
 type AIProvider string
 
@@ -38,10 +30,15 @@ type Config struct {
 	// DebugLog включает запись метаданных каждой задачи в parser_runs.
 	DebugLog bool
 
-	// ScraperProvider — firecrawl | jina.
-	ScraperProvider ScraperProvider
-	// ScraperAPIKey — ключ скрейпера. Секрет.
+	// ScraperAPIKey — ключ Firecrawl. Секрет. Опционален: нужен, только если
+	// в БД есть источники с scraper='firecrawl' (см. internal/scrape.Scrapers.For) —
+	// остальные идут через свой скрейпер (internal/scrape.Direct), ключа не требующий.
 	ScraperAPIKey string
+
+	// BrowserCDPURL — HTTP-адрес DevTools своего headless-Chrome (см.
+	// scrape.ModeBrowser). Пусто = скрейпер browser недоступен, задачи с
+	// scraper='browser' будут падать с понятной ошибкой при попытке скрейпа.
+	BrowserCDPURL string
 
 	// AIProvider — gemini | qwen.
 	AIProvider AIProvider
@@ -71,18 +68,18 @@ type Config struct {
 // Возвращает ошибку, если обязательные значения отсутствуют или некорректны.
 func Load() (*Config, error) {
 	cfg := &Config{
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
-		DebugLog:        parseBool(os.Getenv("PARSER_DEBUG_LOG"), false),
-		ScraperProvider: ScraperProvider(strings.ToLower(os.Getenv("SCRAPER_PROVIDER"))),
-		ScraperAPIKey:   os.Getenv("SCRAPER_API_KEY"),
-		AIProvider:      AIProvider(strings.ToLower(os.Getenv("AI_PROVIDER"))),
-		AIAPIKey:        os.Getenv("AI_API_KEY"),
-		AIModel:         os.Getenv("AI_MODEL"),
-		MaxTokens:       parseInt(os.Getenv("PARSER_MAX_TOKENS"), 8000),
-		Concurrency:     parseInt(os.Getenv("PARSER_CONCURRENCY"), 1),
-		BankIDs:         parseInt64List(os.Getenv("PARSER_BANK_IDS")),
-		HTTPTimeout:     time.Duration(parseInt(os.Getenv("PARSER_HTTP_TIMEOUT_SEC"), 60)) * time.Second,
-		AITimeout:       time.Duration(parseInt(os.Getenv("PARSER_AI_TIMEOUT_SEC"), 120)) * time.Second,
+		DatabaseURL:   os.Getenv("DATABASE_URL"),
+		DebugLog:      parseBool(os.Getenv("PARSER_DEBUG_LOG"), false),
+		ScraperAPIKey: os.Getenv("SCRAPER_API_KEY"),
+		BrowserCDPURL: os.Getenv("BROWSER_CDP_URL"),
+		AIProvider:    AIProvider(strings.ToLower(os.Getenv("AI_PROVIDER"))),
+		AIAPIKey:      os.Getenv("AI_API_KEY"),
+		AIModel:       os.Getenv("AI_MODEL"),
+		MaxTokens:     parseInt(os.Getenv("PARSER_MAX_TOKENS"), 8000),
+		Concurrency:   parseInt(os.Getenv("PARSER_CONCURRENCY"), 1),
+		BankIDs:       parseInt64List(os.Getenv("PARSER_BANK_IDS")),
+		HTTPTimeout:   time.Duration(parseInt(os.Getenv("PARSER_HTTP_TIMEOUT_SEC"), 60)) * time.Second,
+		AITimeout:     time.Duration(parseInt(os.Getenv("PARSER_AI_TIMEOUT_SEC"), 120)) * time.Second,
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -97,23 +94,15 @@ func (c *Config) validate() error {
 		return fmt.Errorf("config: DATABASE_URL обязателен")
 	}
 
-	switch c.ScraperProvider {
-	case ScraperFirecrawl, ScraperJina:
-	default:
-		return fmt.Errorf("config: SCRAPER_PROVIDER должен быть firecrawl|jina, получено %q", c.ScraperProvider)
-	}
-
 	switch c.AIProvider {
 	case AIGemini, AIQwen, AIOpenRouter, AIDeepSeek:
 	default:
 		return fmt.Errorf("config: AI_PROVIDER должен быть gemini|qwen|openrouter|deepseek, получено %q", c.AIProvider)
 	}
 
-	// Firecrawl требует ключ; Jina Reader работает и в бесплатном keyless-режиме
-	// (https://r.jina.ai), поэтому для jina ключ опционален.
-	if c.ScraperAPIKey == "" && c.ScraperProvider == ScraperFirecrawl {
-		return fmt.Errorf("config: SCRAPER_API_KEY обязателен для firecrawl (для jina ключ опционален)")
-	}
+	// SCRAPER_API_KEY не обязателен на старте: нужен только если в БД реально
+	// есть источник с scraper='firecrawl' — тогда его отсутствие уронит
+	// конкретную задачу (ошибка авторизации Firecrawl), не весь процесс.
 	if c.AIAPIKey == "" {
 		return fmt.Errorf("config: AI_API_KEY обязателен")
 	}

@@ -55,6 +55,10 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Худжанд, ул. Гагарина, 135',
                 'address_tg' => null,
                 'contact_email' => 'info2@eskhata.tj',
+                // Тадж. версия — на поддомене (tj.eskhata.com), не в пути.
+                // Слаги продуктов подтверждённо 1:1 совпадают между версиями.
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => 'eskhata.com', 'tj' => 'tj.eskhata.com'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'dushanbe-city',
@@ -95,6 +99,9 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. Багаутдинова 9',
                 'address_tg' => null,
                 'contact_email' => 'info@alif.tj',
+                // Код тадж. локали в пути — "tg", НЕ "tj". Слаги совпадают 1:1.
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => '/tg/'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'amonatbank',
@@ -105,6 +112,10 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки, 105',
                 'address_tg' => null,
                 'contact_email' => 'info@amonatbonk.tj',
+                // Слаги подтверждённо 1:1 совпадают между /ru/ и /tj/ (проверено
+                // на 3 детальных страницах кредитов).
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => '/tj/'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'oriyonbank',
@@ -115,6 +126,12 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки, 95/1',
                 'address_tg' => null,
                 'contact_email' => 'info@orienbank.com',
+                // Дефолт сайта без префикса — ТАДЖИКСКИЙ (не ru!). ru — только
+                // под /ru/. tj = "" (пустой префикс) — легитимно, движок это
+                // поддерживает (comma-ok, не проверка на непустую строку).
+                // Один Next.js SPA, словарь переводов общий — слагам можно верить.
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => ''], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'imon',
@@ -145,6 +162,13 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район И. Сомони, ул. Пушкина 10',
                 'address_tg' => null,
                 'contact_email' => 'info@icb.tj',
+                // JSON API (icb.tj:8384) — язык ТОЛЬКО через заголовок запроса
+                // Accept-Language, значения строго нижним регистром: "ru"/"tj".
+                // Любое другое значение (RU, en, tg, ru-RU...) фолбэкает на
+                // английский — проверено curl. URL ОДИН И ТОТ ЖЕ для двух
+                // языков (см. model.LangURLRule "header", parser.go fetchHeaderBilingual).
+                'lang_url_rule_type' => 'header',
+                'lang_url_rule_params' => json_encode(['header' => 'Accept-Language', 'ru' => 'ru', 'tj' => 'tj'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'dbt',
@@ -160,11 +184,18 @@ class BankSeeder extends Seeder
                 'slug' => 'activbank',
                 'name_ru' => 'ЗАО «Актив Банк»',
                 'name_tg' => 'ҶСП «Актив Банк»',
-                'website' => 'https://www.activbank.tj',
+                // www.-версия отдаёт SSL-сертификат не на этот хост (SEC_E_WRONG_PRINCIPAL) — без www рабочий.
+                'website' => 'https://activbank.tj',
                 'phone' => '(+992 44) 640-50-50',
                 'address_ru' => 'г. Душанбе, район Сино, улица Дилкушо 26/1',
                 'address_tg' => null,
                 'contact_email' => 'info@activbank.tj',
+                // Реальный seed-URL УЖЕ содержит /ru/ (BankSourceUrlSeeder) —
+                // простая симметричная замена, НЕ домен-маркер (тот вставлял
+                // "tj/" перед уже существующим "ru/" — /tj/ru/credits/...,
+                // поймано на живом прогоне). Слаги подтверждены 1:1.
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => '/tj/'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'ibt',
@@ -175,6 +206,10 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район Шохмансур, улица Бухоро 27',
                 'address_tg' => null,
                 'contact_email' => 'info@ibt.tj',
+                // Тот же паттерн, что у ActivBank: ru без сегмента, домен-маркер.
+                // Слаги credit подтверждены 1:1 (3 продукта, тот же порядок).
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => 'ibt.tj/', 'tj' => 'ibt.tj/tj/'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'cbt',
@@ -195,6 +230,11 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Саади Ширази 21',
                 'address_tg' => null,
                 'contact_email' => 'info@ssb.tj',
+                // Язык AJAX-эндпоинтов переключается параметром language_id
+                // (2=ru, 1=tj) — одинаково для ЛЮБОГО URL сайта, поэтому правило
+                // на банке, не на конкретном продукте (см. model.LangURLRule).
+                'lang_url_rule_type' => 'query_param',
+                'lang_url_rule_params' => json_encode(['param' => 'language_id', 'ru' => '2', 'tj' => '1'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'freedom',
@@ -215,6 +255,9 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, р. Фирдавси, улица Н. Карабоев 148/1',
                 'address_tg' => null,
                 'contact_email' => 'office@humo.tj',
+                // Next.js [locale]-роут, /ru/ и /tj/ — симметричные сегменты.
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => '/tj/'], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'vasl',

@@ -33,22 +33,50 @@ func (c Currency) Valid() bool {
 
 // SourceTask — одна задача парсинга, строка bank_source_urls (is_active=true).
 type SourceTask struct {
-	ID       int64    // bank_source_urls.id
-	BankID   int64    // bank_source_urls.bank_id
-	Category Category // category задачи; продукты обязаны ей соответствовать
-	URL      string   // URL страницы для скрейпинга
+	ID          int64        // bank_source_urls.id
+	BankID      int64        // bank_source_urls.bank_id
+	Category    Category     // category задачи; продукты обязаны ей соответствовать
+	URL         string       // URL страницы для скрейпинга (ru-версия)
+	LangURLRule *LangURLRule // правило банка для вывода tj-версии URL; nil — не искать
+	ArrayPath   *string      // array-split режим: путь (jsonpath.Resolve) до массива продуктов в JSON-ответе; nil — выключен
+	Scraper     string       // bank_source_urls.scraper: "" — свой скрейпер (дефолт), "firecrawl" — источник требует JS-рендер
+}
+
+// LangURLRule — как получить tj-версию страницы из её ru-версии, на уровне
+// банка (banks.lang_url_rule_type/lang_url_rule_params). Один способ
+// переключения языка действует на весь сайт банка.
+type LangURLRule struct {
+	Type   string            // query_param | path_replace | header
+	Params map[string]string // см. миграцию add_lang_url_rule_to_banks
+}
+
+// RateRuleItem — правило чтения одного (валюта, категория) из JSON-ответа.
+type RateRuleItem struct {
+	Currency string `json:"currency"`
+	Category string `json:"category"` // cash | transfer
+	BuyPath  string `json:"buy_path"`  // путь (resolvePath) в JSON-ответе; "" — не читать buy
+	SellPath string `json:"sell_path"` // путь (resolvePath); "" — не читать sell
+}
+
+// RateRule — конфиг детерминированного (без AI) извлечения курсов
+// (bank_parse_instructions.rate_rule). nil — используется старый AI-путь.
+type RateRule struct {
+	Format string         `json:"format"` // сейчас поддержан только "json_path" (см. rates/deterministic.go resolvePath)
+	Items  []RateRuleItem `json:"items"`
 }
 
 // DiscoveryInstruction — инструкция discovery-парсера (bank_parse_instructions,
 // kind='product_discovery', is_active=true): с какой страницы и с какими
 // подсказками искать ссылки на страницы продуктов конкретного банка/категории.
 type DiscoveryInstruction struct {
-	ID           int64    // bank_parse_instructions.id
-	BankID       int64    // привязка к банку
-	Category     Category // категория искомых продуктов
-	StartURL     string   // стартовая страница обхода (главная/раздел)
-	MenuSections []string // секции меню-подсказки для AI (может быть пустым)
-	Notes        *string  // свободная подсказка AI или nil
+	ID           int64     // bank_parse_instructions.id
+	BankID       int64     // привязка к банку
+	Category     Category  // категория искомых продуктов
+	StartURL     string    // стартовая страница обхода (главная/раздел)
+	MenuSections []string  // секции меню-подсказки для AI (может быть пустым)
+	Notes        *string   // свободная подсказка AI или nil
+	RateRule     *RateRule // только для kind=rates: конфиг без-AI извлечения; nil — старый AI-путь
+	Scraper      string    // bank_parse_instructions.scraper: "" — свой скрейпер (дефолт), "firecrawl" — источник требует JS-рендер
 }
 
 // Features — булевы признаки продукта. nil = «неизвестно» (на странице нет

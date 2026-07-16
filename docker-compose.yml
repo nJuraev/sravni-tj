@@ -36,6 +36,17 @@ services:
     #   docker compose run --rm backend php artisan migrate
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
 
+  # Свой headless-Chrome для scraper='browser' (internal/scrape/browser.go) —
+  # замена платному Firecrawl для client-rendered SPA/anti-bot источников.
+  # DevTools HTTP/CDP на 9222, доступен парсеру по внутреннему DNS (chrome:9222).
+  chrome:
+    image: chromedp/headless-shell:stable
+    container_name: sravni-chrome
+    # /dev/shm по умолчанию мал (64MB) — Chrome падает на тяжёлых SPA-страницах
+    # без общей памяти под рендер.
+    shm_size: "1gb"
+    restart: unless-stopped
+
   parser:
     build: ./parser
     container_name: sravni-parser
@@ -50,8 +61,8 @@ services:
     # только из окружения — здесь они прокидываются в контейнер.
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://${DB_USERNAME:-sravni}:${DB_PASSWORD:-secret}@db:5432/${DB_DATABASE:-sravni}?sslmode=disable}
-      SCRAPER_PROVIDER: ${SCRAPER_PROVIDER:-firecrawl}
       SCRAPER_API_KEY: ${SCRAPER_API_KEY:-}
+      BROWSER_CDP_URL: ${BROWSER_CDP_URL:-http://chrome:9222}
       AI_PROVIDER: ${AI_PROVIDER:-openrouter}
       # Принимаем оба имени: AI_API_KEY или OPENROUTER_API_KEY (фолбэк).
       AI_API_KEY: ${AI_API_KEY:-${OPENROUTER_API_KEY:-}}
@@ -61,6 +72,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      chrome:
+        condition: service_started
     # Парсер запускается по крону/вручную, не как постоянный сервис:
     #   docker compose run --rm parser go run ./cmd/parser
     command: ["sleep", "infinity"]

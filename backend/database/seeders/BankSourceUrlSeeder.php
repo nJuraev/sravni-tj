@@ -38,17 +38,34 @@ class BankSourceUrlSeeder extends Seeder
             }
 
             $pairs = [];
-            foreach ($entry['credit_urls'] as $url) {
-                $pairs[] = ['credit', $url];
+            foreach ($entry['credit_urls'] as $item) {
+                $pairs[] = ['credit', $item];
             }
-            foreach (($entry['installment_urls'] ?? []) as $url) {
-                $pairs[] = ['installment', $url];
+            foreach (($entry['installment_urls'] ?? []) as $item) {
+                $pairs[] = ['installment', $item];
             }
-            foreach ($entry['deposit_urls'] as $url) {
-                $pairs[] = ['deposit', $url];
+            foreach ($entry['deposit_urls'] as $item) {
+                $pairs[] = ['deposit', $item];
             }
 
-            foreach ($pairs as [$category, $url]) {
+            foreach ($pairs as [$category, $item]) {
+                // Элемент — либо просто URL-строка, либо ['url'=>..., 'array_path'=>...,
+                // 'scraper'=>...]. array_path — array-split режим (см. parser/internal/
+                // parser/arraysplit.go): источник — JSON-массив продуктов целиком,
+                // array_path — путь к массиву (jsonpath.Resolve; "" — сам ответ уже
+                // массив). scraper='browser' (свой headless Chrome) или 'firecrawl'
+                // (платный фолбэк) — источник требует JS-рендер/не проходит anti-bot
+                // защиту своим скрейпером (parser/internal/scrape/direct.go);
+                // null (дефолт) — Direct.
+                $arrayPath = null;
+                $scraper = null;
+                if (is_array($item)) {
+                    $url = $item['url'] ?? '';
+                    $arrayPath = $item['array_path'] ?? null;
+                    $scraper = $item['scraper'] ?? null;
+                } else {
+                    $url = $item;
+                }
                 $url = is_string($url) ? trim($url) : '';
 
                 // Пропускаем пустые, невалидные и слишком длинные (> 1000) URL.
@@ -69,6 +86,8 @@ class BankSourceUrlSeeder extends Seeder
                     [
                         'bank_id' => $bankId,
                         'category' => $category,
+                        'array_path' => $arrayPath,
+                        'scraper' => $scraper,
                         'email' => null, // адрес доставки лида задаётся позже вручную
                         'is_active' => true,
                         'last_parsed_at' => null,
@@ -110,9 +129,17 @@ class BankSourceUrlSeeder extends Seeder
                 'deposit_urls' => ['https://www.spitamenbank.tj/ru/personal/products/deposits/'],
             ],
             [
+                // JSON API, все языки (title/description/slogan/req_borrowers/
+                // req_documents/review_period/loan_amount/loan_term/interest_rate
+                // — каждое поле в *_ru/*_tg/*_en) в ОДНОМ ответе — проверено curl.
+                // Старые HTML-URL (/tg/person/... для тадж., /person/... без
+                // префикса для рус.) тоже рабочие, но требуют пары запросов и
+                // риск рассинхрона — API надёжнее.
+                // array_path='' — ответ уже сам массив (без обёртки),
+                // проверено curl: [{"id":...,"title_ru":...,"title_tg":...},...].
                 'slug' => 'arvand',
-                'credit_urls' => ['https://arvand.tj/tg/person/credits/'],
-                'deposit_urls' => ['https://arvand.tj/tg/person/deposits/'],
+                'credit_urls' => [['url' => 'https://arvand.tj/person/api/credits/', 'array_path' => '']],
+                'deposit_urls' => [['url' => 'https://arvand.tj/person/api/deposits/', 'array_path' => '']],
             ],
             [
                 // Alif — исламский банк: классических кредитов нет, только рассрочка
@@ -136,30 +163,45 @@ class BankSourceUrlSeeder extends Seeder
                 'deposit_urls' => ['https://amonatbonk.tj/ru/personal/deposits/'],
             ],
             [
+                // Без /ru/ — дефолтная ТАДЖИКСКАЯ версия (не ru!). Каноничный
+                // URL источника обязан быть ru-версией (lang_url_rule на банке
+                // выводит tj из неё, см. BankSeeder).
                 'slug' => 'oriyonbank',
-                'credit_urls' => ['https://oriyonbonk.tj/individuals/loans'],
-                'deposit_urls' => ['https://oriyonbonk.tj/individuals/deposits'],
+                'credit_urls' => ['https://oriyonbonk.tj/ru/individuals/loans'],
+                'deposit_urls' => ['https://oriyonbonk.tj/ru/individuals/deposits'],
             ],
             [
                 // credit/deposit — через discovery (инструкции). installment «Насия»
-                // (рассрочка) — прямая страница внутри /loans, задаём явно.
+                // (рассрочка) — прямая страница внутри /loans, задаём явно. imon.tj —
+                // за Cloudflare, свой скрейпер не проходит (см. BankParseInstructionSeeder).
                 'slug' => 'imon',
                 'credit_urls' => [],
-                'installment_urls' => ['https://imon.tj/loans/nasiya'],
+                'installment_urls' => [['url' => 'https://imon.tj/loans/nasiya', 'scraper' => 'browser']],
                 'deposit_urls' => [],
             ],
             [
                 // Tawhidbank (исламский). Мурабаха-каталог /personal/financing — через
                 // discovery. Авто-финансирование на отдельном пути — задаём явно.
+                // Angular SPA, client-rendered — нужен JS-рендер (см. BankParseInstructionSeeder).
                 'slug' => 'tawhidbank',
                 'credit_urls' => [],
-                'installment_urls' => ['https://www.tawhidbank.tj/personal/auto-financing'],
+                'installment_urls' => [['url' => 'https://www.tawhidbank.tj/personal/auto-financing', 'scraper' => 'browser']],
                 'deposit_urls' => [],
             ],
             [
+                // Старые www.icb.tj URL шли через r.jina — Jina сейчас блокирует
+                // ЦЕЛИКОМ этот домен (страница стучится на локальный IP,
+                // триггерит anti-SSRF, воспроизводимо). Реальный источник —
+                // публичный JSON API на ДРУГОМ хосте/порту (icb.tj:8384),
+                // Jina вообще не участвует (прямой HTTP GET). type=ind — уже
+                // структурный фильтр физлиц, не нужен текстовый разбор.
+                // Полные данные продукта уже в JSON (title/description/
+                // currency_attributes/min_term/max_term/requirement/document/
+                // category) — детальных страниц не нужно, одна страница на всё.
+                // array_path='data' — Laravel-пагинация {"data":[...],"links":...,"meta":...}.
                 'slug' => 'icb',
-                'credit_urls' => ['https://www.icb.tj/RU/Credit'],
-                'deposit_urls' => ['https://www.icb.tj/RU/Deposit'],
+                'credit_urls' => [['url' => 'https://icb.tj:8384/api/credit?type=ind', 'array_path' => 'data']],
+                'deposit_urls' => [['url' => 'https://icb.tj:8384/api/deposit?type=ind', 'array_path' => 'data']],
             ],
             [
                 'slug' => 'dbt',
@@ -180,17 +222,22 @@ class BankSourceUrlSeeder extends Seeder
                 'deposit_urls' => ['https://www.ibt.tj/deposits/'],
             ],
             [
+                // cbt.tj — client-rendered JS, свой скрейпер видит пустой shell
+                // (см. BankParseInstructionSeeder).
                 'slug' => 'cbt',
-                'credit_urls' => ['https://www.cbt.tj/credits'],
-                'deposit_urls' => ['https://www.cbt.tj/deposits'],
+                'credit_urls' => [['url' => 'https://www.cbt.tj/credits', 'scraper' => 'browser']],
+                'deposit_urls' => [['url' => 'https://www.cbt.tj/deposits', 'scraper' => 'browser']],
             ],
             [
+                // SSB.tj — SPA грузит контент по AJAX, HTML-страница пустая до JS.
+                // Раньше парсили саму SPA-страницу через рендер (r.jina) — попадали
+                // на дефолтный таджикский вариант (язык не форсировался явно) вместо
+                // русского. Реальный источник — сами AJAX-эндпоинты сайта: JSON,
+                // без отдельных детальных страниц, language_id=2 форсирует русский.
+                // array_path='results' — {"count":10,"next":null,"previous":null,"results":[...]}.
                 'slug' => 'ssb',
-                'credit_urls' => [
-                    'https://www.ssb.tj/ru/?type=1',
-                    'https://www.ssb.tj/Credit/?type=1',
-                ],
-                'deposit_urls' => ['https://www.ssb.tj/ru/Deposit'],
+                'credit_urls' => [['url' => 'https://webapi.ssb.tj/api/Credit/?language_id=2', 'array_path' => 'results']],
+                'deposit_urls' => [['url' => 'https://webapi.ssb.tj/api/Deposit/?language_id=2', 'array_path' => 'results']],
             ],
             [
                 'slug' => 'freedom',

@@ -24,7 +24,7 @@ func NewFirecrawl(apiKey string, client *http.Client) *Firecrawl {
 	return &Firecrawl{apiKey: apiKey, client: client}
 }
 
-// firecrawlRequest — тело запроса: просим только markdown-формат.
+// firecrawlRequest — тело запроса: какие форматы ответа нужны.
 type firecrawlRequest struct {
 	URL     string   `json:"url"`
 	Formats []string `json:"formats"`
@@ -35,20 +35,48 @@ type firecrawlResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
 		Markdown string `json:"markdown"`
+		RawHTML  string `json:"rawHtml"`
 	} `json:"data"`
 	Error string `json:"error"`
 }
 
-// Scrape реализует Scraper.
+// Scrape реализует Scraper: markdown-представление (readability, без <script>).
 func (f *Firecrawl) Scrape(ctx context.Context, url string) (string, error) {
-	body, err := json.Marshal(firecrawlRequest{URL: url, Formats: []string{"markdown"}})
+	parsed, err := f.fetch(ctx, url, "markdown")
 	if err != nil {
-		return "", fmt.Errorf("firecrawl: marshal: %w", err)
+		return "", err
+	}
+	md := strings.TrimSpace(parsed.Data.Markdown)
+	if md == "" {
+		return "", fmt.Errorf("firecrawl: пустой markdown")
+	}
+	return md, nil
+}
+
+// ScrapeRaw возвращает СЫРОЙ HTML (после JS-рендера) — нужен SPA-страницам,
+// где курсы/данные лежат в JSON внутри <script>, а markdown-readability их режет.
+func (f *Firecrawl) ScrapeRaw(ctx context.Context, url string) (string, error) {
+	parsed, err := f.fetch(ctx, url, "rawHtml")
+	if err != nil {
+		return "", err
+	}
+	rawHTML := strings.TrimSpace(parsed.Data.RawHTML)
+	if rawHTML == "" {
+		return "", fmt.Errorf("firecrawl: пустой rawHtml")
+	}
+	return rawHTML, nil
+}
+
+// fetch — общее тело запроса к Firecrawl v1 scrape API с заданным форматом ответа.
+func (f *Firecrawl) fetch(ctx context.Context, url, format string) (*firecrawlResponse, error) {
+	body, err := json.Marshal(firecrawlRequest{URL: url, Formats: []string{format}})
+	if err != nil {
+		return nil, fmt.Errorf("firecrawl: marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, firecrawlEndpoint, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("firecrawl: new request: %w", err)
+		return nil, fmt.Errorf("firecrawl: new request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+f.apiKey)
@@ -56,13 +84,13 @@ func (f *Firecrawl) Scrape(ctx context.Context, url string) (string, error) {
 	resp, err := f.client.Do(req)
 	if err != nil {
 		// Транзиентная сетевая ошибка/таймаут — оркестратор ретраит.
-		return "", fmt.Errorf("firecrawl: do: %w", err)
+		return nil, fmt.Errorf("firecrawl: do: %w", err)
 	}
 	defer resp.Body.Close()
 
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // защита от гигантских тел
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20)) // rawHtml крупнее markdown
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", &HTTPError{
+		return nil, &HTTPError{
 			StatusCode: resp.StatusCode,
 			RetryAfter: resp.Header.Get("Retry-After"),
 			Body:       truncate(string(raw), 500),
@@ -71,24 +99,12 @@ func (f *Firecrawl) Scrape(ctx context.Context, url string) (string, error) {
 
 	var parsed firecrawlResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return "", fmt.Errorf("firecrawl: unmarshal: %w", err)
+		return nil, fmt.Errorf("firecrawl: unmarshal: %w", err)
 	}
 	if !parsed.Success {
-		return "", fmt.Errorf("firecrawl: success=false: %s", parsed.Error)
+		return nil, fmt.Errorf("firecrawl: success=false: %s", parsed.Error)
 	}
-
-	md := strings.TrimSpace(parsed.Data.Markdown)
-	if md == "" {
-		return "", fmt.Errorf("firecrawl: пустой markdown")
-	}
-	return md, nil
-}
-
-// ScrapeRaw: Firecrawl сейчас не используется (основной провайдер — Jina).
-// Заглушка для интерфейса: возвращает markdown (без сохранения <script>).
-// При необходимости заменить на formats:["rawHtml"] и поле data.rawHtml.
-func (f *Firecrawl) ScrapeRaw(ctx context.Context, url string) (string, error) {
-	return f.Scrape(ctx, url)
+	return &parsed, nil
 }
 
 // truncate усекает строку до n рун для безопасного логирования.

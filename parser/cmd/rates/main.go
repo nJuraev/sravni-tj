@@ -1,15 +1,14 @@
 // Command rates — парсер курсов валют Sravni.tj.
 //
 // Один прогон: читает bank_parse_instructions(kind='rates'), скрейпит страницы
-// курсов банков (Jina; вкладки в статичном HTML), извлекает buy/sell по валютам
-// и категориям (cash/transfer) и пишет в bank_currency_rates.
-// Периодичность (раз/неделю или чаще) — внешний крон.
+// курсов банков (Direct/Firecrawl — по bank_parse_instructions.scraper),
+// извлекает buy/sell по валютам и категориям (cash/transfer) и пишет в
+// bank_currency_rates. Периодичность (раз/неделю или чаще) — внешний крон.
 package main
 
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -48,9 +47,9 @@ func run(log *slog.Logger) error {
 	}
 	defer st.Close()
 
-	httpClient := &http.Client{Transport: http.DefaultTransport}
+	httpClient := scrape.NewHTTPClient()
 
-	scraper, err := scrape.New(cfg, httpClient)
+	scrapers, err := scrape.New(cfg, httpClient)
 	if err != nil {
 		return err
 	}
@@ -59,6 +58,6 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	r := rates.New(cfg, st, scraper, ai, log)
+	r := rates.New(cfg, st, scrapers, ai, httpClient, log)
 	return r.Run(ctx)
 }

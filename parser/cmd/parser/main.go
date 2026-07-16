@@ -10,7 +10,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -51,11 +50,10 @@ func run(log *slog.Logger) error {
 	}
 	defer st.Close()
 
-	// Общий HTTP-клиент. Per-call таймауты задаются через context в пайплайне,
-	// поэтому клиентский Timeout не выставляем (иначе он перекроет контекст).
-	httpClient := &http.Client{Transport: http.DefaultTransport}
+	// Общий HTTP-клиент (TLS AIA-фолбэк — см. scrape.NewHTTPClient).
+	httpClient := scrape.NewHTTPClient()
 
-	scraper, err := scrape.New(cfg, httpClient)
+	scrapers, err := scrape.New(cfg, httpClient)
 	if err != nil {
 		return err
 	}
@@ -64,6 +62,6 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	p := parser.New(cfg, st, scraper, ai, log)
+	p := parser.New(cfg, st, scrapers, ai, httpClient, log)
 	return p.Run(ctx)
 }

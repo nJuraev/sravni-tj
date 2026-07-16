@@ -38,13 +38,16 @@ func (s *PG) Close() {
 	}
 }
 
-// ActiveTasks читает активные источники парсинга.
+// ActiveTasks читает активные источники парсинга. JOIN banks — правило языка
+// (lang_url_rule_*) живёт на банке, не на источнике (см. model.LangURLRule).
 func (s *PG) ActiveTasks(ctx context.Context) ([]model.SourceTask, error) {
 	const q = `
-		SELECT id, bank_id, category, url
-		FROM bank_source_urls
-		WHERE is_active = true
-		ORDER BY id`
+		SELECT u.id, u.bank_id, u.category, u.url, u.array_path, u.scraper,
+			b.lang_url_rule_type, b.lang_url_rule_params
+		FROM bank_source_urls u
+		JOIN banks b ON b.id = u.bank_id
+		WHERE u.is_active = true
+		ORDER BY u.id`
 	rows, err := s.pool.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("store: выборка задач: %w", err)
@@ -53,12 +56,21 @@ func (s *PG) ActiveTasks(ctx context.Context) ([]model.SourceTask, error) {
 
 	var tasks []model.SourceTask
 	for rows.Next() {
-		var t model.SourceTask
-		var cat string
-		if err := rows.Scan(&t.ID, &t.BankID, &cat, &t.URL); err != nil {
+		var (
+			t          model.SourceTask
+			cat        string
+			scraper    *string
+			ruleType   *string
+			ruleParams []byte // jsonb или NULL
+		)
+		if err := rows.Scan(&t.ID, &t.BankID, &cat, &t.URL, &t.ArrayPath, &scraper, &ruleType, &ruleParams); err != nil {
 			return nil, fmt.Errorf("store: scan задачи: %w", err)
 		}
 		t.Category = model.Category(cat)
+		t.LangURLRule = decodeLangURLRule(ruleType, ruleParams)
+		if scraper != nil {
+			t.Scraper = *scraper
+		}
 		tasks = append(tasks, t)
 	}
 	if err := rows.Err(); err != nil {
@@ -67,10 +79,26 @@ func (s *PG) ActiveTasks(ctx context.Context) ([]model.SourceTask, error) {
 	return tasks, nil
 }
 
+// decodeLangURLRule собирает правило языка банка. Некорректный/отсутствующий
+// params при заданном type — не критично для обхода, просто nil (без tj-версии).
+func decodeLangURLRule(ruleType *string, params []byte) *model.LangURLRule {
+	if ruleType == nil {
+		return nil
+	}
+	var p map[string]string
+	if len(params) > 0 {
+		_ = json.Unmarshal(params, &p)
+	}
+	if len(p) == 0 {
+		return nil
+	}
+	return &model.LangURLRule{Type: *ruleType, Params: p}
+}
+
 // DiscoveryInstructions читает активные инструкции discovery.
 func (s *PG) DiscoveryInstructions(ctx context.Context) ([]model.DiscoveryInstruction, error) {
 	const q = `
-		SELECT id, bank_id, category, start_url, menu_sections, notes
+		SELECT id, bank_id, category, start_url, menu_sections, notes, scraper
 		FROM bank_parse_instructions
 		WHERE kind = 'product_discovery' AND is_active = true
 		ORDER BY id`
@@ -85,15 +113,19 @@ func (s *PG) DiscoveryInstructions(ctx context.Context) ([]model.DiscoveryInstru
 		var (
 			in       model.DiscoveryInstruction
 			cat      string
-			sections []byte // jsonb массив строк или NULL
+			sections []byte  // jsonb массив строк или NULL
+			scraper  *string
 		)
-		if err := rows.Scan(&in.ID, &in.BankID, &cat, &in.StartURL, &sections, &in.Notes); err != nil {
+		if err := rows.Scan(&in.ID, &in.BankID, &cat, &in.StartURL, &sections, &in.Notes, &scraper); err != nil {
 			return nil, fmt.Errorf("store: scan инструкции: %w", err)
 		}
 		in.Category = model.Category(cat)
 		if len(sections) > 0 {
 			// Игнорируем ошибку декода: подсказки не критичны для обхода.
 			_ = json.Unmarshal(sections, &in.MenuSections)
+		}
+		if scraper != nil {
+			in.Scraper = *scraper
 		}
 		out = append(out, in)
 	}
@@ -132,7 +164,7 @@ func (s *PG) TouchInstruction(ctx context.Context, instructionID int64, at time.
 // RatesInstructions читает активные инструкции курсов (kind='rates').
 func (s *PG) RatesInstructions(ctx context.Context) ([]model.DiscoveryInstruction, error) {
 	const q = `
-		SELECT id, bank_id, start_url, notes
+		SELECT id, bank_id, start_url, notes, rate_rule, scraper
 		FROM bank_parse_instructions
 		WHERE kind = 'rates' AND is_active = true
 		ORDER BY id`
@@ -144,9 +176,22 @@ func (s *PG) RatesInstructions(ctx context.Context) ([]model.DiscoveryInstructio
 
 	var out []model.DiscoveryInstruction
 	for rows.Next() {
-		var in model.DiscoveryInstruction
-		if err := rows.Scan(&in.ID, &in.BankID, &in.StartURL, &in.Notes); err != nil {
+		var (
+			in       model.DiscoveryInstruction
+			ruleJSON []byte // jsonb или NULL
+			scraper  *string
+		)
+		if err := rows.Scan(&in.ID, &in.BankID, &in.StartURL, &in.Notes, &ruleJSON, &scraper); err != nil {
 			return nil, fmt.Errorf("store: scan инструкции курсов: %w", err)
+		}
+		if len(ruleJSON) > 0 {
+			var rr model.RateRule
+			if err := json.Unmarshal(ruleJSON, &rr); err == nil && rr.Format != "" {
+				in.RateRule = &rr
+			}
+		}
+		if scraper != nil {
+			in.Scraper = *scraper
 		}
 		out = append(out, in)
 	}
