@@ -29,6 +29,7 @@ class BankResource extends JsonResource
             'name_ru' => $this->name_ru,
             'name_tg' => $this->name_tg,
             'is_partner' => (bool) $this->is_partner,
+            'logo_url' => $this->logo_url,
             'website' => $this->website,
             'phone' => $this->phone,
             'address_ru' => $this->address_ru,

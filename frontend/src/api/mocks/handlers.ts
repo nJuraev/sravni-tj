@@ -1,6 +1,9 @@
 import type {
   BankListResponse,
   BankResponse,
+  BankReviewCreateResponse,
+  BankReviewListResponse,
+  BankReviewRequest,
   BestRateQuery,
   BestRateResponse,
   FeatureKey,
@@ -10,9 +13,11 @@ import type {
   ProductListResponse,
   ProductQuery,
   ProductResponse,
+  RateListQuery,
+  RateListResponse,
 } from '@/types/api'
 import { ApiError } from '@/api/errors'
-import { mockBanks, mockProducts, mockRates } from './fixtures'
+import { mockBankReviews, mockBanks, mockProducts, mockRates } from './fixtures'
 
 /**
  * In-memory mock backend replicating contracts.md semantics:
@@ -134,6 +139,61 @@ export async function mockGetBestRate(query: BestRateQuery): Promise<BestRateRes
       : candidates.reduce((a, b) => ((b.buy as number) > (a.buy as number) ? b : a))
 
   return delay({ data: best })
+}
+
+export async function mockGetRates(query: RateListQuery): Promise<RateListResponse> {
+  const currency = query.currency?.toUpperCase()
+  const data = mockRates.filter(
+    (r) => (!currency || r.currency === currency) && (!query.category || r.category === query.category),
+  )
+  return delay({ data })
+}
+
+export async function mockGetBankReviews(bankId: number, page: number): Promise<BankReviewListResponse> {
+  const all = mockBankReviews[bankId] ?? []
+  const perPage = 20
+  const start = (page - 1) * perPage
+  return delay({
+    data: all.slice(start, start + perPage),
+    pagination: {
+      page,
+      per_page: perPage,
+      total_items: all.length,
+      total_pages: all.length === 0 ? 0 : Math.ceil(all.length / perPage),
+    },
+  })
+}
+
+export async function mockCreateBankReview(
+  bankId: number,
+  body: BankReviewRequest,
+): Promise<BankReviewCreateResponse> {
+  const errors: Record<string, string[]> = {}
+
+  if (!body.author_name || body.author_name.trim().length < 2) {
+    errors.author_name = ['Укажите имя.']
+  }
+  if (!body.rating || body.rating < 1 || body.rating > 5) {
+    errors.rating = ['Оценка должна быть от 1 до 5.']
+  }
+  if (!body.body || body.body.trim().length < 10) {
+    errors.body = ['Отзыв должен содержать не менее 10 символов.']
+  }
+  if (body.consent !== true) {
+    errors.consent = ['Необходимо согласие на обработку персональных данных.']
+  }
+  if (!mockBanks.find((b) => b.id === bankId)) {
+    return Promise.reject(new ApiError(404, { message: 'Resource not found.' }))
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return Promise.reject(new ApiError(422, { message: 'The given data was invalid.', errors }))
+  }
+
+  return delay({
+    data: { id: Math.floor(Math.random() * 90000) + 1000, status: 'pending' },
+    message: 'Отзыв принят и будет опубликован после модерации.',
+  })
 }
 
 export async function mockPostLead(body: LeadRequest): Promise<LeadResponse> {

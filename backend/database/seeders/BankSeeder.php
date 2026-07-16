@@ -55,6 +55,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Худжанд, ул. Гагарина, 135',
                 'address_tg' => null,
                 'contact_email' => 'info2@eskhata.tj',
+                'logo_url' => '/bank-logos/eskhata.png',
                 // Тадж. версия — на поддомене (tj.eskhata.com), не в пути.
                 // Слаги продуктов подтверждённо 1:1 совпадают между версиями.
                 'lang_url_rule_type' => 'path_replace',
@@ -69,6 +70,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, р. Фирдавси, ул. Сохили 5',
                 'address_tg' => null,
                 'contact_email' => 'info1@dc.tj',
+                // dc.tj недоступен из парсера/CI (таймаут) — иконку не смогли снять с сайта.
             ],
             [
                 'slug' => 'spitamen',
@@ -79,6 +81,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. Бободжон Гафуров 45',
                 'address_tg' => null,
                 'contact_email' => 'info@spitamen.com',
+                'logo_url' => '/bank-logos/spitamen.ico',
             ],
             [
                 'slug' => 'arvand',
@@ -89,6 +92,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'Согдийская область, г. Худжанд, проспект Исмоили Сомони 1 А',
                 'address_tg' => null,
                 'contact_email' => 'office@arvand.tj',
+                'logo_url' => '/bank-logos/arvand.ico',
             ],
             [
                 'slug' => 'alif',
@@ -99,6 +103,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. Багаутдинова 9',
                 'address_tg' => null,
                 'contact_email' => 'info@alif.tj',
+                'logo_url' => '/bank-logos/alif.svg',
                 // Код тадж. локали в пути — "tg", НЕ "tj". Слаги совпадают 1:1.
                 'lang_url_rule_type' => 'path_replace',
                 'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => '/tg/'], JSON_UNESCAPED_UNICODE),
@@ -142,6 +147,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'Согдийская область, город Худжанд, микрорайон 17, 2',
                 'address_tg' => null,
                 'contact_email' => 'info@imon.tj',
+                'logo_url' => '/bank-logos/imon.ico',
             ],
             [
                 'slug' => 'tawhidbank',
@@ -179,6 +185,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. А. Пушкина, 20',
                 'address_tg' => null,
                 'contact_email' => 'info@brt.tj',
+                'logo_url' => '/bank-logos/dbt.png',
             ],
             [
                 'slug' => 'activbank',
@@ -206,6 +213,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район Шохмансур, улица Бухоро 27',
                 'address_tg' => null,
                 'contact_email' => 'info@ibt.tj',
+                'logo_url' => '/bank-logos/ibt.ico',
                 // Тот же паттерн, что у ActivBank: ru без сегмента, домен-маркер.
                 // Слаги credit подтверждены 1:1 (3 продукта, тот же порядок).
                 'lang_url_rule_type' => 'path_replace',
@@ -220,6 +228,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район И. Сомони, улица Бохтар 37/1',
                 'address_tg' => null,
                 'contact_email' => 'info@cbt.tj',
+                'logo_url' => '/bank-logos/cbt.ico',
             ],
             [
                 'slug' => 'ssb',
@@ -245,6 +254,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки 81B',
                 'address_tg' => null,
                 'contact_email' => 'info@freedombank.tj',
+                'logo_url' => '/bank-logos/freedom.ico',
             ],
             [
                 'slug' => 'humo',
@@ -258,6 +268,7 @@ class BankSeeder extends Seeder
                 // Next.js [locale]-роут, /ru/ и /tj/ — симметричные сегменты.
                 'lang_url_rule_type' => 'path_replace',
                 'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => '/tj/'], JSON_UNESCAPED_UNICODE),
+                'logo_url' => '/bank-logos/humo.ico',
             ],
             [
                 'slug' => 'vasl',

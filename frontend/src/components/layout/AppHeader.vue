@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import { useCompareStore } from '@/stores/compare'
@@ -12,6 +12,13 @@ const menuOpen = ref(false)
 function closeMenu() {
   menuOpen.value = false
 }
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeMenu()
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
@@ -32,13 +39,16 @@ function closeMenu() {
         type="button"
         class="header__burger"
         :aria-expanded="menuOpen"
-        :aria-label="t('common.more')"
+        :aria-label="t('nav.menu')"
         @click="menuOpen = !menuOpen"
       >
         <span /><span /><span />
       </button>
 
+      <div v-if="menuOpen" class="nav__backdrop" @click="closeMenu" />
+
       <nav class="nav" :class="{ 'nav--open': menuOpen }" :aria-label="t('app.name')">
+        <RouterLink to="/kurs-valyut" class="nav__link" @click="closeMenu">{{ t('nav.rates') }}</RouterLink>
         <RouterLink to="/credit" class="nav__link" @click="closeMenu">{{ t('nav.credit') }}</RouterLink>
         <RouterLink to="/deposit" class="nav__link" @click="closeMenu">{{ t('nav.deposit') }}</RouterLink>
         <RouterLink to="/installment" class="nav__link" @click="closeMenu">{{ t('nav.installment') }}</RouterLink>
@@ -149,13 +159,25 @@ function closeMenu() {
   border-radius: 2px;
 }
 
+.nav__backdrop {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .header__burger {
     display: flex;
   }
+  .nav__backdrop {
+    display: block;
+    position: fixed;
+    inset: var(--header-height) 0 0 0;
+    background: rgb(0 0 0 / 40%);
+    z-index: 40;
+  }
   .nav {
     position: absolute;
     inset: var(--header-height) 0 auto 0;
+    z-index: 41;
     flex-direction: column;
     align-items: stretch;
     padding: var(--space-3);
