@@ -11,6 +11,7 @@ interface CompareState {
 }
 
 function loadPersisted(): Product[] {
+  if (typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
@@ -61,6 +62,7 @@ export const useCompareStore = defineStore('compare', {
       this.persist()
     },
     persist(): void {
+      if (typeof window === 'undefined') return
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.items))
       } catch {

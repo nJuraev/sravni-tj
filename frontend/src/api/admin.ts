@@ -14,10 +14,14 @@ import type {
 
 const TOKEN_KEY = 'sravni.admin_token'
 
+// Admin is CSR-only (no SSR value — auth lives client-side), but guard anyway:
+// defense-in-depth against a future contributor triggering this during SSR.
 export function getToken(): string | null {
+  if (typeof window === 'undefined') return null
   return localStorage.getItem(TOKEN_KEY)
 }
 export function setToken(token: string | null): void {
+  if (typeof window === 'undefined') return
   if (token) localStorage.setItem(TOKEN_KEY, token)
   else localStorage.removeItem(TOKEN_KEY)
 }

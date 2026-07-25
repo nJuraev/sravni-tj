@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Bank } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 
 const { t } = useI18n()
+const api = useApi()
 const { name } = useLocalizedField()
 const banks = ref<Bank[]>([])
 const status = ref<'loading' | 'loaded' | 'error'>('loading')
 
-onMounted(async () => {
-  try {
-    const res = await api.getBanks()
-    banks.value = res.data.filter((b) => b.is_partner)
-    status.value = banks.value.length === 0 ? 'error' : 'loaded'
-  } catch {
-    status.value = 'error'
-  }
-})
+// Awaited (not onMounted, which never fires server-side) so SSR renders real banks.
+try {
+  const res = await api.getBanks()
+  banks.value = res.data.filter((b) => b.is_partner)
+  status.value = banks.value.length === 0 ? 'error' : 'loaded'
+} catch {
+  status.value = 'error'
+}
 
 const bankInitial = (b: Bank) => (name(b) || '?').trim().charAt(0).toUpperCase()
 const isVisible = computed(() => status.value === 'loaded')

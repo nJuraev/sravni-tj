@@ -28,14 +28,16 @@ import {
   mockPostLead,
 } from './mocks/handlers'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api'
+// Under Node SSR, prefer the private/internal backend URL (e.g. Railway's
+// internal network hostname) over the public one baked into the client
+// bundle — server-to-server calls skip the public internet and CORS
+// entirely. `process.env` is read once at module load, which happens once
+// per Node process — safe (not a per-request concurrency hazard) since this
+// value is constant for the process's whole lifetime, unlike per-request
+// state such as locale.
+const SSR_API_BASE_URL = typeof process !== 'undefined' ? process.env?.SSR_API_BASE_URL : undefined
+const API_BASE_URL = SSR_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true'
-
-/** Active locale, set by i18n; sent as Accept-Language for localized 422s. */
-let activeLocale: Locale = 'ru'
-export function setApiLocale(locale: Locale): void {
-  activeLocale = locale
-}
 
 /** Serialize ProductQuery into URLSearchParams per the contract. */
 export function buildProductParams(query: ProductQuery): URLSearchParams {
@@ -67,7 +69,7 @@ const CATEGORY_PATH: Record<NonNullable<ProductQuery['category']>, string> = {
   installment: 'installments',
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(locale: Locale, path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -75,7 +77,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: {
         Accept: 'application/json',
         // Контракт бэкенда — ru|tg (docs/api/contracts.md); tj — только код фронта.
-        'Accept-Language': WIRE_LOCALE[activeLocale],
+        'Accept-Language': WIRE_LOCALE[locale],
         ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
         ...init?.headers,
       },
@@ -101,65 +103,67 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
+// Every method takes `locale` explicitly (no shared mutable state) — one Node
+// process serves many concurrent SSR requests, each with its own locale.
 export const api = {
-  getProducts(query: ProductQuery = {}): Promise<ProductListResponse> {
+  getProducts(locale: Locale, query: ProductQuery = {}): Promise<ProductListResponse> {
     if (USE_MOCKS) return mockGetProducts(query)
     const segment = CATEGORY_PATH[query.category ?? 'credit']
     const params = buildProductParams(query)
     const qs = params.toString()
-    return request<ProductListResponse>(`/products/${segment}${qs ? `?${qs}` : ''}`)
+    return request<ProductListResponse>(locale, `/products/${segment}${qs ? `?${qs}` : ''}`)
   },
 
-  getProduct(id: number): Promise<ProductResponse> {
+  getProduct(locale: Locale, id: number): Promise<ProductResponse> {
     if (USE_MOCKS) return mockGetProduct(id)
-    return request<ProductResponse>(`/products/${id}`)
+    return request<ProductResponse>(locale, `/products/${id}`)
   },
 
-  getBanks(): Promise<BankListResponse> {
+  getBanks(locale: Locale): Promise<BankListResponse> {
     if (USE_MOCKS) return mockGetBanks()
-    return request<BankListResponse>('/banks')
+    return request<BankListResponse>(locale, '/banks')
   },
 
-  getBank(id: number): Promise<BankResponse> {
+  getBank(locale: Locale, id: number): Promise<BankResponse> {
     if (USE_MOCKS) return mockGetBank(id)
-    return request<BankResponse>(`/banks/${id}`)
+    return request<BankResponse>(locale, `/banks/${id}`)
   },
 
-  getBestRate(query: BestRateQuery): Promise<BestRateResponse> {
+  getBestRate(locale: Locale, query: BestRateQuery): Promise<BestRateResponse> {
     if (USE_MOCKS) return mockGetBestRate(query)
     const params = new URLSearchParams({
       currency: query.currency,
       category: query.category,
       op: query.op,
     })
-    return request<BestRateResponse>(`/rates/best?${params.toString()}`)
+    return request<BestRateResponse>(locale, `/rates/best?${params.toString()}`)
   },
 
-  createLead(body: LeadRequest): Promise<LeadResponse> {
+  createLead(locale: Locale, body: LeadRequest): Promise<LeadResponse> {
     if (USE_MOCKS) return mockPostLead(body)
-    return request<LeadResponse>('/leads', {
+    return request<LeadResponse>(locale, '/leads', {
       method: 'POST',
       body: JSON.stringify(body),
     })
   },
 
-  getRates(query: RateListQuery = {}): Promise<RateListResponse> {
+  getRates(locale: Locale, query: RateListQuery = {}): Promise<RateListResponse> {
     if (USE_MOCKS) return mockGetRates(query)
     const params = new URLSearchParams()
     if (query.currency) params.set('currency', query.currency)
     if (query.category) params.set('category', query.category)
     const qs = params.toString()
-    return request<RateListResponse>(`/rates${qs ? `?${qs}` : ''}`)
+    return request<RateListResponse>(locale, `/rates${qs ? `?${qs}` : ''}`)
   },
 
-  getBankReviews(bankId: number, page = 1): Promise<BankReviewListResponse> {
+  getBankReviews(locale: Locale, bankId: number, page = 1): Promise<BankReviewListResponse> {
     if (USE_MOCKS) return mockGetBankReviews(bankId, page)
-    return request<BankReviewListResponse>(`/banks/${bankId}/reviews?page=${page}`)
+    return request<BankReviewListResponse>(locale, `/banks/${bankId}/reviews?page=${page}`)
   },
 
-  createBankReview(bankId: number, body: BankReviewRequest): Promise<BankReviewCreateResponse> {
+  createBankReview(locale: Locale, bankId: number, body: BankReviewRequest): Promise<BankReviewCreateResponse> {
     if (USE_MOCKS) return mockCreateBankReview(bankId, body)
-    return request<BankReviewCreateResponse>(`/banks/${bankId}/reviews`, {
+    return request<BankReviewCreateResponse>(locale, `/banks/${bankId}/reviews`, {
       method: 'POST',
       body: JSON.stringify(body),
     })

@@ -5,18 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "dev:ssr": "node server/index.js",
+    "build:client": "vite build",
+    "build:server": "vite build --ssr src/entry-server.ts",
+    "build": "vue-tsc -b && npm run build:client && npm run build:server",
     "preview": "vite preview",
-    "start": "serve -s dist -l ${PORT:-8080}",
+    "start": "NODE_ENV=production node server/index.js",
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@unhead/vue": "^3.2.3",
     "@vicons/ionicons5": "^0.13.0",
+    "express": "^5.2.1",
     "naive-ui": "^2.44.1",
     "pinia": "^2.2.6",
-    "serve": "^14.2.6",
     "vue": "^3.5.13",
     "vue-i18n": "^10.0.5",
     "vue-router": "^4.5.0"

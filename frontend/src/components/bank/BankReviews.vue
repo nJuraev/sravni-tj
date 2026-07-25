@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { BankReview } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
 import { ApiError } from '@/api/errors'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -12,6 +12,7 @@ import BaseTextField from '@/components/ui/BaseTextField.vue'
 const props = defineProps<{ bankId: number }>()
 
 const { t, locale } = useI18n()
+const api = useApi()
 const bodyId = useId()
 
 const reviews = ref<BankReview[]>([])

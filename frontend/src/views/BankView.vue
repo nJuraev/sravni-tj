@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
+import RouterLink from '@/components/nav/LocaleLink.vue'
 import type { Bank } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
+import { useSeo } from '@/composables/useSeo'
 import { ApiError } from '@/api/errors'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
@@ -16,6 +17,7 @@ import BankReviews from '@/components/bank/BankReviews.vue'
 const props = defineProps<{ id: number }>()
 
 const { t } = useI18n()
+const api = useApi()
 const { name, value } = useLocalizedField()
 
 const bank = ref<Bank | null>(null)
@@ -26,6 +28,37 @@ const about = computed(() => (bank.value ? value(bank.value.about_ru ?? null, ba
 const address = computed(() => (bank.value ? value(bank.value.address_ru ?? null, bank.value.address_tg ?? null) : ''))
 const ratingValue = computed(() => (bank.value?.rating_avg != null ? bank.value.rating_avg.toFixed(1) : null))
 const ratingCount = computed(() => bank.value?.rating_count ?? 0)
+
+const seoTitle = computed(() => (bank.value ? t('bank.seoTitle', { name: name(bank.value) }) : t('bank.notFoundTitle')))
+const seoDescription = computed(() =>
+  bank.value ? t('bank.seoDescription', { name: name(bank.value) }) : t('bank.notFoundHint'),
+)
+// BankOrCreditUnion JSON-LD; aggregateRating only when there are approved
+// reviews (see rating.none/cold-start policy — no rating block otherwise).
+const seoJsonLd = computed(() => {
+  if (!bank.value) return undefined
+  const b = bank.value
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BankOrCreditUnion',
+      name: name(b),
+      url: b.website ?? undefined,
+      telephone: b.phone ?? undefined,
+      address: address.value || undefined,
+      ...(ratingCount.value > 0
+        ? {
+            aggregateRating: {
+              '@type': 'AggregateRating',
+              ratingValue: ratingValue.value,
+              reviewCount: ratingCount.value,
+            },
+          }
+        : {}),
+    },
+  ]
+})
+useSeo({ title: seoTitle, description: seoDescription, jsonLd: seoJsonLd })
 
 let requestId = 0
 async function load(id: number) {
@@ -44,7 +77,11 @@ async function load(id: number) {
   }
 }
 
-watch(() => props.id, (id) => load(id), { immediate: true })
+// Awaited so SSR's renderToString actually waits for real data; later id
+// changes (navigating between banks without a full reload) are still picked
+// up client-side via the watch below.
+await load(props.id)
+watch(() => props.id, (id) => load(id))
 </script>
 
 <template>

@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
+import RouterLink from '@/components/nav/LocaleLink.vue'
 import type { Bank } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
 import BaseButton from '@/components/ui/BaseButton.vue'
 
 const { t } = useI18n()
+const api = useApi()
 
 const banks = ref<Bank[]>([])
 const status = ref<'loading' | 'loaded' | 'error'>('loading')
 
-onMounted(async () => {
-  try {
-    const res = await api.getBanks()
-    banks.value = res.data
-    status.value = banks.value.length === 0 ? 'error' : 'loaded'
-  } catch {
-    status.value = 'error'
-  }
-})
+// Awaited (not onMounted, which never fires server-side) so SSR renders real banks.
+try {
+  const res = await api.getBanks()
+  banks.value = res.data
+  status.value = banks.value.length === 0 ? 'error' : 'loaded'
+} catch {
+  status.value = 'error'
+}
 
 // Cold-start: пока ни у одного банка нет одобренных отзывов — зовём стать первым.
 const hasAnyReviews = computed(() => banks.value.some((b) => (b.rating_count ?? 0) > 0))

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
+import RouterLink from '@/components/nav/LocaleLink.vue'
 import type { RateCategory } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import RateCategoryCard, { type RateCategoryRow } from './RateCategoryCard.vue'
 
@@ -11,6 +11,7 @@ import RateCategoryCard, { type RateCategoryRow } from './RateCategoryCard.vue'
 const CURRENCIES = ['USD', 'EUR', 'RUB']
 
 const { t } = useI18n()
+const api = useApi()
 const { name } = useLocalizedField()
 
 const status = ref<'loading' | 'loaded' | 'error'>('loading')
@@ -33,15 +34,14 @@ async function loadCategory(category: RateCategory): Promise<RateCategoryRow[]> 
   return results.filter((r): r is RateCategoryRow => r !== null)
 }
 
-onMounted(async () => {
-  try {
-    const [transfer, cash] = await Promise.all([loadCategory('transfer'), loadCategory('cash')])
-    rowsByCategory.value = { transfer, cash }
-    status.value = transfer.length === 0 && cash.length === 0 ? 'error' : 'loaded'
-  } catch {
-    status.value = 'error'
-  }
-})
+// Awaited (not onMounted, which never fires server-side) so SSR renders real rates.
+try {
+  const [transfer, cash] = await Promise.all([loadCategory('transfer'), loadCategory('cash')])
+  rowsByCategory.value = { transfer, cash }
+  status.value = transfer.length === 0 && cash.length === 0 ? 'error' : 'loaded'
+} catch {
+  status.value = 'error'
+}
 
 // Ничего показать нечего — секция скрывается целиком, страница не падает.
 const isVisible = computed(() => status.value === 'loaded')

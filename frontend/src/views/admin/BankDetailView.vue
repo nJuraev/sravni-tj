@@ -26,6 +26,11 @@ const FEATURE_LABEL: Record<FeatureKey, string> = {
   online_application: 'Онлайн-заявка', no_guarantor: 'Без поручителя',
   capitalization: 'Капитализация', replenishable: 'Пополняемый',
 }
+function formatDate(v: string | null | undefined): string {
+  if (!v) return '—'
+  return new Date(v).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 const STATUS_META: Record<string, { label: string; type: 'success' | 'warning' | 'default' | 'error' }> = {
   active: { label: 'активен', type: 'success' }, draft: { label: 'черновик', type: 'warning' },
   hidden: { label: 'скрыт', type: 'default' }, outdated: { label: 'устарел', type: 'error' },
@@ -203,6 +208,10 @@ const columns: DataTableColumns<AdminProduct> = [
   { title: 'Категория', key: 'category', width: 110 },
   { title: 'Валюта', key: 'currency', width: 80 },
   { title: 'Ставка', key: 'rate', width: 110, render: (p) => `${p.rate_min}–${p.rate_max}%` },
+  {
+    title: 'Обновлён', key: 'parsed_at', width: 130,
+    render: (p) => formatDate(p.parsed_at ?? p.updated_at),
+  },
   {
     title: 'Статус', key: 'status', width: 110,
     render: (p) => h(NTag, { size: 'small', type: STATUS_META[p.status]?.type ?? 'default', bordered: false },

@@ -1,18 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
+import RouterLink from '@/components/nav/LocaleLink.vue'
 import type { Locale, Product } from '@/types/api'
 import { useCompareStore } from '@/stores/compare'
 import { useLeadModalStore } from '@/stores/leadModal'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import { useProductDisplay } from '@/composables/useProductDisplay'
+import { useSeo } from '@/composables/useSeo'
 import { formatMoney, formatRateRange } from '@/lib/format'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseBadge from '@/components/ui/BaseBadge.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 
 const { t, locale } = useI18n()
+
+// User-specific (localStorage-backed selection), not real SEO content — no
+// hreflang twin worth advertising either.
+useSeo({ title: t('compare.title'), description: t('compare.seoDescription'), noindex: true, hreflang: false })
+
 const compare = useCompareStore()
 const leadModal = useLeadModalStore()
 const { name } = useLocalizedField()

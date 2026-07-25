@@ -3,7 +3,7 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 // https://vite.dev/config/
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ command, mode, isSsrBuild }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   // Mocks are ON by default in `vite dev` so the app runs without a backend.
@@ -21,6 +21,12 @@ export default defineConfig(({ command, mode }) => {
     },
     define: {
       'import.meta.env.VITE_USE_MOCKS': JSON.stringify(useMocks),
+    },
+    // Two-pass SSR build: `vite build` (client) and `vite build --ssr
+    // src/entry-server.ts` (server) each go to their own dir — server/index.js
+    // reads dist/client for static assets + template, dist/server for render().
+    build: {
+      outDir: isSsrBuild ? 'dist/server' : 'dist/client',
     },
     server: {
       host: true,

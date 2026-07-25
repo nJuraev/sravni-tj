@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
+import RouterLink from '@/components/nav/LocaleLink.vue'
 import type { Category, Product } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
 import { ApiError } from '@/api/errors'
 import ProductCard from '@/components/catalog/ProductCard.vue'
 import SkeletonCard from '@/components/ui/SkeletonCard.vue'
@@ -17,21 +17,21 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const api = useApi()
 const status = ref<'loading' | 'loaded' | 'error'>('loading')
 const products = ref<Product[]>([])
 
-onMounted(async () => {
-  try {
-    // Дефолтная сортировка эндпоинта уже «лучшее предложение первым»
-    // (credits: rate_min asc, deposits: -rate_max desc) — доп. sort не нужен.
-    const res = await api.getProducts({ category: props.category, per_page: 3 })
-    products.value = res.data
-    status.value = res.data.length === 0 ? 'error' : 'loaded'
-  } catch (err) {
-    status.value = 'error'
-    if (!(err instanceof ApiError)) throw err
-  }
-})
+// Awaited (not onMounted, which never fires server-side) so SSR renders real products.
+try {
+  // Дефолтная сортировка эндпоинта уже «лучшее предложение первым»
+  // (credits: rate_min asc, deposits: -rate_max desc) — доп. sort не нужен.
+  const res = await api.getProducts({ category: props.category, per_page: 3 })
+  products.value = res.data
+  status.value = res.data.length === 0 ? 'error' : 'loaded'
+} catch (err) {
+  status.value = 'error'
+  if (!(err instanceof ApiError)) throw err
+}
 </script>
 
 <template>

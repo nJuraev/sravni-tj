@@ -2,7 +2,8 @@
 import { ref, watch, computed, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Category, Pagination, Product, ProductQuery } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
+import { useSeo } from '@/composables/useSeo'
 import { ApiError } from '@/api/errors'
 import { useCatalogQuery } from '@/composables/useCatalogQuery'
 import CatalogFilters from '@/components/catalog/CatalogFilters.vue'
@@ -15,6 +16,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 const props = defineProps<{ category: Category }>()
 
 const { t } = useI18n()
+const api = useApi()
 const category = toRef(props, 'category')
 const { query, apply, setPage, reset } = useCatalogQuery(() => category.value)
 
@@ -55,6 +57,22 @@ const title = computed(() => {
   return t('catalog.creditsTitle')
 })
 
+// Reactive (not snapshotted at setup time) — /credit ↔ /deposit ↔ /installment
+// share this same route/component instance, so category changes client-side
+// without a remount; useSeo's title/description must track that.
+useSeo({
+  title: computed(() => {
+    if (category.value === 'deposit') return t('catalog.seoTitleDeposits')
+    if (category.value === 'installment') return t('catalog.seoTitleInstallments')
+    return t('catalog.seoTitleCredits')
+  }),
+  description: computed(() => {
+    if (category.value === 'deposit') return t('catalog.seoDescriptionDeposits')
+    if (category.value === 'installment') return t('catalog.seoDescriptionInstallments')
+    return t('catalog.seoDescriptionCredits')
+  }),
+})
+
 const isEmpty = computed(() => status.value === 'loaded' && products.value.length === 0)
 
 let requestId = 0
@@ -77,7 +95,11 @@ async function load(q: ProductQuery) {
   }
 }
 
-watch(query, (q) => load(q), { immediate: true, deep: true })
+// Awaited so SSR's renderToString actually waits for real data instead of
+// rendering the permanent loading skeleton; later query changes (filters,
+// pagination) are still picked up client-side via the watch below.
+await load(query.value)
+watch(query, (q) => load(q), { deep: true })
 </script>
 
 <template>

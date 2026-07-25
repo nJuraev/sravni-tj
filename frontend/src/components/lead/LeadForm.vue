@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Product } from '@/types/api'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
 import { ApiError } from '@/api/errors'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import { formatTajikPhone, tajikPhoneDigits, TAJIK_PHONE_DEFAULT } from '@/composables/useTajikPhoneMask'
@@ -14,6 +14,7 @@ const props = defineProps<{ product: Product }>()
 const emit = defineEmits<{ done: [] }>()
 
 const { t } = useI18n()
+const api = useApi()
 const { name } = useLocalizedField()
 
 const form = reactive({

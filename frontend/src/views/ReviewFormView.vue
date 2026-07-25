@@ -1,32 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Bank } from '@/types/api'
-import { api } from '@/api/client'
-import { useHead } from '@/composables/useHead'
+import { useApi } from '@/composables/useApi'
+import { useSeo } from '@/composables/useSeo'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BankReviews from '@/components/bank/BankReviews.vue'
 
 const { t } = useI18n()
+const api = useApi()
 const { name } = useLocalizedField()
 
-const clearHead = useHead({
+useSeo({
   title: t('reviewsPage.seoTitle'),
   description: t('reviewsPage.seoDescription'),
 })
-onUnmounted(clearHead)
 
 const banks = ref<Bank[]>([])
 const selectedBankId = ref('')
 
-onMounted(async () => {
-  try {
-    banks.value = (await api.getBanks()).data
-  } catch {
-    /* список банков не критичен — просто нечего будет выбрать */
-  }
-})
+// Awaited (not onMounted, which never fires server-side) so SSR renders the picker filled.
+try {
+  banks.value = (await api.getBanks()).data
+} catch {
+  /* список банков не критичен — просто нечего будет выбрать */
+}
 
 const bankOptions = computed(() => [
   { value: '', label: t('reviewsPage.selectPlaceholder') },

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
+import RouterLink from '@/components/nav/LocaleLink.vue'
 import type { Locale, Product } from '@/types/api'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import { useProductDisplay } from '@/composables/useProductDisplay'
@@ -58,6 +58,9 @@ const bankInitial = computed(() => (name(props.product.bank) || '?').trim().char
 
 const inCompare = computed(() => compare.has(props.product.id))
 const features = computed(() => activeFeatures(props.product))
+// Валюты группы (source_url_id): бейджами, без табов — переключение валюты
+// только на detail-странице (см. ProductDetailView).
+const currencies = computed(() => props.product.currencies ?? [props.product.currency])
 
 function toggleCompare() {
   const ok = compare.toggle(props.product)
@@ -90,7 +93,7 @@ function toggleCompare() {
       </RouterLink>
 
       <ul class="prow__features" role="list">
-        <li class="prow__cat"><BaseBadge tone="neutral">{{ product.currency }}</BaseBadge></li>
+        <li v-for="c in currencies" :key="c" class="prow__cat"><BaseBadge tone="neutral">{{ c }}</BaseBadge></li>
         <li v-if="product.is_special" class="prow__cat">
           <BaseBadge tone="green">{{ t('product.special') }}</BaseBadge>
         </li>

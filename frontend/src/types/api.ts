@@ -9,7 +9,7 @@ export type Currency = 'TJS' | 'USD' | 'EUR'
  * UI-код языка. `tj` — внутренний код фронта (не ISO 639-1: там таджикский —
  * `tg`). *_tg-поля контракта (name_tg и т.д.) и Accept-Language к бэкенду
  * остаются `tg` — это заморожено в docs/api/contracts.md, маппинг на границе
- * см. `setApiLocale` в api/client.ts.
+ * см. `WIRE_LOCALE` ниже.
  */
 export type Locale = 'ru' | 'tj'
 
@@ -74,6 +74,32 @@ export interface Bank {
 /** product.bank carries the same shape as a standalone bank. */
 export type BankRef = Bank
 
+/**
+ * Один валютный вариант продукта (одна строка `products` в БД = одна валюта).
+ * Общие поля (name/description/bank/category/subcategory) не дублируются —
+ * они приходят из `Product` верхнего уровня и одинаковы для всей группы
+ * (source_url_id). Присутствует в ответе только на `GET /api/products/{id}`
+ * (аддитивное расширение контракта, см. docs/api/contracts.md).
+ */
+export interface ProductVariant {
+  id: number
+  currency: Currency
+  rate_min: number
+  rate_max: number
+  amount_min: number | null
+  amount_max: number | null
+  term_min: number | null
+  term_max: number | null
+  rate_tiers: RateTier[]
+  features: ProductFeatures
+  key_conditions_ru?: string[] | null
+  key_conditions_tg?: string[] | null
+  documents_ru?: string[] | null
+  documents_tg?: string[] | null
+  source_url?: string | null
+  parsed_at: string | null
+}
+
 export interface Product {
   id: number
   category: Category
@@ -104,6 +130,10 @@ export interface Product {
   features: ProductFeatures
   bank: BankRef
   parsed_at: string | null
+  /** Валюты группы (source_url_id) для бейджей в каталоге. Только в списке. */
+  currencies?: Currency[]
+  /** Валютные варианты группы для табов на detail-странице. Только в GET /api/products/{id}. */
+  variants?: ProductVariant[]
 }
 
 export interface Pagination {

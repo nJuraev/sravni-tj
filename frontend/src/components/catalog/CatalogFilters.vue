@@ -5,7 +5,7 @@ import type { Bank, Currency, FeatureKey, ProductQuery, Subcategory } from '@/ty
 import { FEATURE_KEYS, SUBCATEGORIES_BY_CATEGORY } from '@/composables/useProductDisplay'
 import { DEFAULT_SORT } from '@/composables/useCatalogQuery'
 import { useLocalizedField } from '@/composables/useLocalizedField'
-import { api } from '@/api/client'
+import { useApi } from '@/composables/useApi'
 import { bankLogoUrl } from '@/lib/bankIcon'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseTextField from '@/components/ui/BaseTextField.vue'
@@ -20,6 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const api = useApi()
 const { name } = useLocalizedField()
 
 const banks = ref<Bank[]>([])

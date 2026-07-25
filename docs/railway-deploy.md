@@ -69,20 +69,39 @@ MAIL_FROM_NAME=Sravni.tj
 
 ---
 
-## 3. frontend (Vue SPA)
+## 3. frontend (Vue SSR)
 
-Root Directory: `frontend`. Nixpacks ([railway.json](../frontend/railway.json)): `npm ci && npm run build`, старт `vite preview` на `$PORT`.
+Root Directory: `frontend`. Builder: **Dockerfile** ([railway.json](../frontend/railway.json) → [Dockerfile.railway](../frontend/Dockerfile.railway)), не Nixpacks. Сборка гоняет `npm run build` (это `vue-tsc -b && vite build && vite build --ssr src/entry-server.ts` — клиентский бандл в `dist/client`, серверный в `dist/server`), рантайм — живой Node-процесс `node server/index.js` (Express: `vue/server-renderer` рендерит HTML на каждый запрос, статика отдаётся из `dist/client`). Это не статик-хостинг и не `vite preview` — каталог/курсы/продукты рендерятся с реальными данными из backend API на сервере, что и даёт краулерам (и AI-ботам без JS) полноценный HTML вместо пустого `#app`.
 
-### Build-переменные frontend (важно: вшиваются в бандл на этапе сборки)
+`/admin/*` — единственное исключение: отдаётся статический CSR-шелл без SSR (авторизация админки живёт в `localStorage` браузера, на сервере её не видно — SSR всегда показал бы "разлогинен").
+
+### Переменные frontend — build-time vs runtime (важное разделение)
+
+**Build-time** (`ARG`/`ENV` в Dockerfile, вшиваются в бандл при `npm run build`, видны и клиенту, и серверу через `import.meta.env`):
 
 ```
-VITE_API_BASE_URL=https://<backend-домен>.up.railway.app/api
+VITE_API_BASE_URL=https://<backend-домен>.up.railway.app/api   # публичный домен backend — для fetch из браузера после гидратации
 VITE_USE_MOCKS=false
+VITE_PUBLIC_SITE_ORIGIN=https://sravni.tj                       # для абсолютных canonical/hreflang/sitemap URL
 ```
 
-`VITE_*` читаются во время `npm run build`, поэтому задайте их до деплоя. При смене домена backend — пересоберите frontend.
+Меняются только через **пересборку** (Railway → frontend → Settings → Variables, но это build args, не runtime env — их значения фиксируются в момент `npm run build` и переопределить их после билда без ребилда нельзя).
 
-SPA-роутинг (`/admin`, `/product/:id`) работает: `vite preview` отдаёт `index.html` как fallback. `allowedHosts: true` в [vite.config.ts](../frontend/vite.config.ts) разрешает Railway-домен.
+**Runtime** (обычные Railway-переменные сервиса, читаются `process.env` живым Node-процессом на каждый запрос — можно менять и рестартовать без пересборки):
+
+```
+SSR_API_BASE_URL=http://backend.railway.internal:<port>/api    # приватный Railway-домен backend — server-to-server, без публичного интернета и CORS
+```
+
+Уточните точный приватный хостнейм/порт backend в Railway dashboard → сервис backend → вкладка Networking (приватный домен вида `<service>.railway.internal`, порт — тот же, что слушает `php artisan serve`). Без `SSR_API_BASE_URL` сервер молча упадёт на `VITE_API_BASE_URL` (публичный домен) — рабочий фолбэк, но лишний круг через публичный интернет вместо приватной сети.
+
+### Rollout
+
+Runtime-модель сменилась (статик-раздача → живой Node-процесс) — это не косметическое изменение. Перед промоутом на прод:
+1. Задеплоить на отдельное Railway-окружение/превью с теми же `VITE_API_BASE_URL`/`SSR_API_BASE_URL`, указывающими на прод-backend.
+2. Смоук-тест: `/`, `/tj`, `/credit`, `/tj/credit`, `/product/:id`, `/bank/:id`, `/kurs-valyut`, `/otzyvy`, `/admin` (должен остаться логин-форма CSR), `/robots.txt`, `/sitemap.xml`.
+3. Проверить `view-source:` на реальных URL — HTML не должен быть пустым `#app`.
+4. Только после этого — промоут. Предыдущий образ (статик-`serve`) остаётся в истории деплоев Railway для отката одним кликом.
 
 ---
 
@@ -148,7 +167,7 @@ PARSER_CONCURRENCY=3
 
 1. Создать проект, добавить **PostgreSQL**.
 2. Добавить сервис **backend** из репо, Root = `backend`, задать env (см. выше), сгенерировать `APP_KEY`. Дождаться деплоя; разово выполнить `php artisan db:seed --force` (Railway → service → shell).
-3. Добавить сервис **frontend**, Root = `frontend`, задать `VITE_API_BASE_URL` (домен backend) + `VITE_USE_MOCKS=false`.
+3. Добавить сервис **frontend**, Root = `frontend`, задать build-переменные `VITE_API_BASE_URL` (публичный домен backend) + `VITE_USE_MOCKS=false` + `VITE_PUBLIC_SITE_ORIGIN`, и runtime-переменную `SSR_API_BASE_URL` (приватный `backend.railway.internal` — см. §3).
 4. Добавить сервис **chrome** — Deploy from Docker Image `chromedp/headless-shell:stable`, без Root Directory и без публичного домена.
 5. Добавить сервис **parser**, Root = `parser`, задать env (включая `BROWSER_CDP_URL=http://chrome.railway.internal:9222`). Проверить, что Railway распознал cron.
 6. Добавить сервис **parser-rates**, Root = `parser`, Config-as-code Path = `railway.rates.json`, задать те же env. Проверить cron (`0 3-13 * * *` UTC).

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
-import { useHead } from '@/composables/useHead'
+import RouterLink from '@/components/nav/LocaleLink.vue'
+import { useSeo } from '@/composables/useSeo'
+import { SITE_ORIGIN } from '@/lib/siteOrigin'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import RateWidget from '@/components/home/RateWidget.vue'
 import ProductTeaserSection from '@/components/home/ProductTeaserSection.vue'
@@ -11,7 +11,9 @@ import ReviewCtaSection from '@/components/home/ReviewCtaSection.vue'
 
 const { t } = useI18n()
 
-const clearHead = useHead({
+// Sitewide Organization/WebSite JSON-LD lives here (home page) only — Google
+// needs one such block per site, not one per page.
+useSeo({
   title: t('home.seo.title'),
   description: t('home.seo.description'),
   jsonLd: [
@@ -19,17 +21,16 @@ const clearHead = useHead({
       '@context': 'https://schema.org',
       '@type': 'Organization',
       name: 'Sravni.tj',
-      url: 'https://sravni.tj',
+      url: SITE_ORIGIN,
     },
     {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
       name: 'Sravni.tj',
-      url: 'https://sravni.tj',
+      url: SITE_ORIGIN,
     },
   ],
 })
-onUnmounted(clearHead)
 </script>
 
 <template>

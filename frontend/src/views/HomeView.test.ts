@@ -1,7 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { defineComponent } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { createHead } from '@unhead/vue/client'
 import { i18n } from '@/i18n'
+import { router } from '@/router'
 import HomeView from './HomeView.vue'
 
 vi.mock('@/api/client', () => ({
@@ -13,17 +16,27 @@ vi.mock('@/api/client', () => ({
     }),
     getBanks: vi.fn().mockResolvedValue({ data: [] }),
   },
-  setApiLocale: vi.fn(),
 }))
 
 const RouterLinkStub = { template: '<a><slot /></a>' }
 
-describe('HomeView', () => {
-  it('renders the hero heading even when every supplementary section has no data', async () => {
-    setActivePinia(createPinia())
+// HomeView's data-fetching children (RateWidget, ProductTeaserSection, ...)
+// await their data at the top of setup() (SSR-awaitable pattern) — same as
+// the real app (App.vue), they must be mounted inside <Suspense>.
+const SuspenseHarness = defineComponent({
+  components: { HomeView },
+  template: '<Suspense><HomeView /></Suspense>',
+})
 
-    const wrapper = mount(HomeView, {
-      global: { plugins: [i18n], stubs: { RouterLink: RouterLinkStub } },
+describe('HomeView', () => {
+  beforeEach(async () => {
+    setActivePinia(createPinia())
+    await router.push('/')
+  })
+
+  it('renders the hero heading even when every supplementary section has no data', async () => {
+    const wrapper = mount(SuspenseHarness, {
+      global: { plugins: [i18n, router, createHead()], stubs: { RouterLink: RouterLinkStub } },
     })
     await flushPromises()
 

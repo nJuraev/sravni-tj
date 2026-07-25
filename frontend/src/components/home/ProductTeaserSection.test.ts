@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { defineComponent } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { i18n } from '@/i18n'
@@ -10,7 +11,6 @@ import type { Product } from '@/types/api'
 
 vi.mock('@/api/client', () => ({
   api: { getProducts: vi.fn() },
-  setApiLocale: vi.fn(),
 }))
 
 const RouterLinkStub = { template: '<a><slot /></a>' }
@@ -39,8 +39,16 @@ function makeProduct(id: number): Product {
   }
 }
 
+// ProductTeaserSection awaits its data at the top of setup() (SSR-awaitable
+// pattern) — same as the real app (App.vue), it must be mounted inside <Suspense>.
+const SuspenseHarness = defineComponent({
+  components: { ProductTeaserSection },
+  props: ['category', 'title', 'ctaLabel', 'ctaTo'],
+  template: '<Suspense><ProductTeaserSection v-bind="$props" /></Suspense>',
+})
+
 function mountSection() {
-  return mount(ProductTeaserSection, {
+  return mount(SuspenseHarness, {
     props: { category: 'credit', title: 'Топ кредитов', ctaLabel: 'Все кредиты', ctaTo: '/credit' },
     global: { plugins: [i18n], stubs: { RouterLink: RouterLinkStub } },
   })
@@ -60,7 +68,7 @@ describe('ProductTeaserSection', () => {
     const wrapper = mountSection()
     await flushPromises()
 
-    expect(api.getProducts).toHaveBeenCalledWith({ category: 'credit', per_page: 3 })
+    expect(api.getProducts).toHaveBeenCalledWith('ru', { category: 'credit', per_page: 3 })
     expect(wrapper.findAllComponents(ProductCard)).toHaveLength(3)
   })
 

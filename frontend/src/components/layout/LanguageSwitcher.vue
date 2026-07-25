@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import type { Locale } from '@/types/api'
-import { setLocale, SUPPORTED_LOCALES } from '@/i18n'
+import { SUPPORTED_LOCALES } from '@/i18n'
+import { getLocalizedRouteTarget } from '@/router/locale'
 
 const { locale, t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 
+// Navigates to the same page in the other locale tree (URL is the single
+// source of truth — the router guard syncs i18n/locale on arrival). No
+// auto-redirect based on a stored preference: that would be an SEO
+// anti-pattern (duplicate content / redirect loops for crawlers).
 function choose(l: Locale) {
-  setLocale(l)
+  router.push(getLocalizedRouteTarget(route, l))
 }
 </script>
 

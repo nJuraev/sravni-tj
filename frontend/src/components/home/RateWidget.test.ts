@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import { defineComponent } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { i18n } from '@/i18n'
 import RateWidget from './RateWidget.vue'
@@ -6,13 +7,19 @@ import { api } from '@/api/client'
 
 vi.mock('@/api/client', () => ({
   api: { getBestRate: vi.fn() },
-  setApiLocale: vi.fn(),
 }))
 
 const RouterLinkStub = { template: '<a><slot /></a>' }
 
+// RateWidget awaits its data at the top of setup() (SSR-awaitable pattern) —
+// same as the real app (App.vue), it must be mounted inside <Suspense>.
+const SuspenseHarness = defineComponent({
+  components: { RateWidget },
+  template: '<Suspense><RateWidget /></Suspense>',
+})
+
 function mountWidget() {
-  return mount(RateWidget, {
+  return mount(SuspenseHarness, {
     global: { plugins: [i18n], stubs: { RouterLink: RouterLinkStub } },
   })
 }
@@ -28,7 +35,7 @@ describe('RateWidget', () => {
   })
 
   it('shows the winning bank for each category, using its own buy+sell pair', async () => {
-    vi.mocked(api.getBestRate).mockImplementation(async ({ category }) => ({
+    vi.mocked(api.getBestRate).mockImplementation(async (_locale, { category }) => ({
       data: {
         bank: {
           id: 1,
