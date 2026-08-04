@@ -131,6 +131,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки, 95/1',
                 'address_tg' => null,
                 'contact_email' => 'info@orienbank.com',
+                'logo_url' => '/bank-logos/oriyonbank.ico',
                 // Дефолт сайта без префикса — ТАДЖИКСКИЙ (не ru!). ru — только
                 // под /ru/. tj = "" (пустой префикс) — легитимно, движок это
                 // поддерживает (comma-ok, не проверка на непустую строку).
@@ -197,6 +198,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район Сино, улица Дилкушо 26/1',
                 'address_tg' => null,
                 'contact_email' => 'info@activbank.tj',
+                'logo_url' => '/bank-logos/activbank.png',
                 // Реальный seed-URL УЖЕ содержит /ru/ (BankSourceUrlSeeder) —
                 // простая симметричная замена, НЕ домен-маркер (тот вставлял
                 // "tj/" перед уже существующим "ru/" — /tj/ru/credits/...,
@@ -239,6 +241,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Саади Ширази 21',
                 'address_tg' => null,
                 'contact_email' => 'info@ssb.tj',
+                'logo_url' => '/bank-logos/ssb.ico',
                 // Язык AJAX-эндпоинтов переключается параметром language_id
                 // (2=ru, 1=tj) — одинаково для ЛЮБОГО URL сайта, поэтому правило
                 // на банке, не на конкретном продукте (см. model.LangURLRule).

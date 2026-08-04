@@ -217,8 +217,8 @@ func TestDebugLog_False_NoParserRuns(t *testing.T) {
 
 func TestPartialRejection_ValidWrittenInvalidSkipped(t *testing.T) {
 	bad := validDeposit()
-	bad.RateTiers = []model.RateTier{{TermMin: ip(3), TermMax: ip(12), Rate: 0}} // 0% → отбраковка
-	bad.RateMin, bad.RateMax = 0, 0
+	bad.RateTiers = []model.RateTier{{TermMin: ip(3), TermMax: ip(12), Rate: -1}} // отрицательная ставка → отбраковка
+	bad.RateMin, bad.RateMax = -1, -1
 	bad.NameRU = sp("Битый вклад")
 
 	st := &mockStore{tasks: []model.SourceTask{depositTask()}}

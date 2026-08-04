@@ -68,7 +68,42 @@ func (r *Rater) Run(ctx context.Context) error {
 	}
 	wg.Wait()
 	r.log.Info("парсинг курсов завершён")
+	r.notifyBackend(ctx)
 	return nil
+}
+
+// notifyBackend — best-effort уведомление Laravel о завершении прогона курсов
+// (запускает рассылку алертов по курсу, см. Api\Internal\RatesNotifyController).
+// Не настроено (BACKEND_RATES_WEBHOOK_URL пуст) или сбой сети/backend — только
+// лог, прогон парсера не падает.
+func (r *Rater) notifyBackend(ctx context.Context) {
+	url := r.cfg.BackendRatesWebhookURL
+	if url == "" {
+		return
+	}
+
+	nctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(nctx, http.MethodPost, url, nil)
+	if err != nil {
+		r.log.Warn("rates: не удалось собрать запрос уведомления backend", "err", err)
+		return
+	}
+	if r.cfg.BackendRatesWebhookSecret != "" {
+		req.Header.Set("X-Internal-Secret", r.cfg.BackendRatesWebhookSecret)
+	}
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		r.log.Warn("rates: уведомление backend о завершении прогона не удалось", "err", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		r.log.Warn("rates: backend вернул ошибку на уведомление о прогоне", "status", resp.StatusCode)
+	}
 }
 
 // filterInstructionsByBank оставляет только инструкции выбранных банков (PARSER_BANK_IDS).

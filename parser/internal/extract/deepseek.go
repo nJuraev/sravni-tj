@@ -14,8 +14,10 @@ import (
 // deepSeekEndpoint — OpenAI-совместимый chat/completions прямого API DeepSeek.
 const deepSeekEndpoint = "https://api.deepseek.com/chat/completions"
 
-// defaultDeepSeekModel — модель по умолчанию (V3, переопределяется AI_MODEL).
-const defaultDeepSeekModel = "deepseek-chat"
+// defaultDeepSeekModel — модель по умолчанию (переопределяется AI_MODEL).
+// DeepSeek прекратил поддержку алиаса "deepseek-chat" — актуальные имена
+// моделей: deepseek-v4-pro | deepseek-v4-flash.
+const defaultDeepSeekModel = "deepseek-v4-flash"
 
 // DeepSeek — экстрактор через прямой API DeepSeek. В отличие от OpenRouter,
 // DeepSeek НЕ поддерживает strict json_schema, только response_format json_object,

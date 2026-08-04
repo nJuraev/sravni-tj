@@ -40,12 +40,22 @@ func TestValidateProduct_OK(t *testing.T) {
 	}
 }
 
-func TestValidateProduct_RejectsZeroRate(t *testing.T) {
+func TestValidateProduct_AcceptsZeroRate(t *testing.T) {
 	p := validBase()
 	p.RateMin = 0
-	p.RateTiers = []model.RateTier{{Rate: 0}} // 0% — галлюцинация
+	p.RateMax = 0
+	p.RateTiers = []model.RateTier{{Rate: 0}} // 0% — реальная акционная ставка
+	if _, err := ValidateProduct(p, model.CategoryDeposit); err != nil {
+		t.Fatalf("ставка 0%% допустима, получена ошибка: %v", err)
+	}
+}
+
+func TestValidateProduct_RejectsNegativeRate(t *testing.T) {
+	p := validBase()
+	p.RateMin = -1
+	p.RateTiers = []model.RateTier{{Rate: -1}}
 	if _, err := ValidateProduct(p, model.CategoryDeposit); err == nil {
-		t.Fatal("ставка 0% должна отбраковываться")
+		t.Fatal("отрицательная ставка должна отбраковываться")
 	}
 }
 

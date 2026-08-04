@@ -69,6 +69,11 @@ services:
       AI_MODEL: ${AI_MODEL:-}
       PARSER_DEBUG_LOG: ${PARSER_DEBUG_LOG:-false}
       PARSER_CONCURRENCY: ${PARSER_CONCURRENCY:-1}
+      # Best-effort вызов Laravel после прогона курсов (cmd/rates) → рассылка
+      # алертов. Локально бьёт по внутреннему DNS сервиса backend. Секрет должен
+      # совпадать с TELEGRAM_RATES_WEBHOOK_SECRET у backend.
+      BACKEND_RATES_WEBHOOK_URL: ${BACKEND_RATES_WEBHOOK_URL:-http://backend:8000/api/internal/rates-notify}
+      BACKEND_RATES_WEBHOOK_SECRET: ${BACKEND_RATES_WEBHOOK_SECRET:-}
     depends_on:
       db:
         condition: service_healthy

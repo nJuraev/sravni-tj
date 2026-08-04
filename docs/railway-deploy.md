@@ -163,6 +163,56 @@ PARSER_CONCURRENCY=3
 
 ---
 
+## 7. Telegram-бот и уведомления о курсе
+
+Добавляет к сервису **backend** (§2) новые переменные и один разовый шаг после первого деплоя. Никакого нового Railway-сервиса не требуется — webhook принимает тот же Laravel-процесс.
+
+### Переменные окружения backend (добавить к §2)
+
+```
+TELEGRAM_BOT_TOKEN=              # токен бота от @BotFather
+TELEGRAM_BOT_USERNAME=           # без @, напр. sravni_bot
+TELEGRAM_CHANNEL_INVITE_LINK=    # ссылка на канал для инвайта (2-е сообщение бота); пусто → инвайт не шлётся
+TELEGRAM_WEBHOOK_SECRET=         # случайная строка — сверяется с X-Telegram-Bot-Api-Secret-Token
+TELEGRAM_RATES_WEBHOOK_SECRET=   # случайная строка — сверяется с X-Internal-Secret (вызов от parser-rates)
+FRONTEND_URL=https://sravni.tj   # используется в ссылке на профиль в приветственном сообщении бота
+```
+
+### Разовый шаг: регистрация webhook
+
+После деплоя backend (уже после того, как у него есть публичный домен) — через Railway shell:
+
+```
+php artisan telegram:set-webhook
+```
+
+Без аргумента берёт `APP_URL` + `/api/telegram/webhook`. Проверить ответ `{"ok":true,...}`.
+
+### parser-rates → backend (§6)
+
+Добавить к переменным `parser-rates` (не влияет на основной `parser`):
+
+```
+# Предпочтительно приватный Railway-домен backend (server-to-server, без выхода
+# в публичный интернет) — как SSR_API_BASE_URL в §3. Порт — тот, что слушает
+# php artisan serve. Публичный https-адрес тоже сработает как фолбэк.
+BACKEND_RATES_WEBHOOK_URL=http://backend.railway.internal:<port>/api/internal/rates-notify
+BACKEND_RATES_WEBHOOK_SECRET=    # то же значение, что TELEGRAM_RATES_WEBHOOK_SECRET у backend
+```
+
+> `DispatchRateAlerts` работает при `QUEUE_CONNECTION=sync` (§2) — Job выполняется
+> синхронно внутри запроса `rates-notify`, отдельный воркер `queue:work` НЕ нужен.
+> Парсер зовёт эндпоинт best-effort с коротким таймаутом; если рассылка дольше —
+> парсер не ждёт, но Laravel её завершит.
+
+Best-effort вызов — при сбое сети/backend прогон курсов не падает, только пишет warning в лог.
+
+### Очередь рассылки
+
+`DispatchRateAlerts` — queued Job (`ShouldQueue`). Текущий `QUEUE_CONNECTION=sync` (§2) означает, что при `sync` job выполняется **синхронно внутри запроса** `/api/internal/rates-notify` — рабочий вариант для низкой нагрузки (десятки подписок), но блокирует ответ на время рассылки. Для async-обработки: переключить `QUEUE_CONNECTION=database` и запустить воркер (`php artisan queue:work --daemon`) — отдельным процессом/сервисом, аналогично cron-сервисам выше. Не блокер запуска фичи, но пункт для дальнейшего масштабирования.
+
+---
+
 ## Порядок деплоя
 
 1. Создать проект, добавить **PostgreSQL**.

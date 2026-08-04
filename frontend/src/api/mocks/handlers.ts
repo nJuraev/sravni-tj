@@ -15,6 +15,7 @@ import type {
   ProductResponse,
   RateListQuery,
   RateListResponse,
+  TelegramSubscribeInitResponse,
 } from '@/types/api'
 import { ApiError } from '@/api/errors'
 import { mockBankReviews, mockBanks, mockProducts, mockRates } from './fixtures'
@@ -139,6 +140,10 @@ export async function mockGetBestRate(query: BestRateQuery): Promise<BestRateRes
       : candidates.reduce((a, b) => ((b.buy as number) > (a.buy as number) ? b : a))
 
   return delay({ data: best })
+}
+
+export async function mockTelegramSubscribeInit(): Promise<TelegramSubscribeInitResponse> {
+  return delay({ data: { deep_link: 'https://t.me/sravni_mock_bot?start=mock-token', expires_in: 900 } })
 }
 
 export async function mockGetRates(query: RateListQuery): Promise<RateListResponse> {

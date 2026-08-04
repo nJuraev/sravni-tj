@@ -42,4 +42,20 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * Пользователь, зарегистрированный через Telegram: без email/password,
+     * с api_token (уже "залогинен").
+     */
+    public function telegram(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'email' => null,
+            'email_verified_at' => null,
+            'password' => null,
+            'telegram_id' => fake()->unique()->numberBetween(100000, 999999999),
+            'telegram_username' => fake()->userName(),
+            'api_token' => Str::random(64),
+        ]);
+    }
 }

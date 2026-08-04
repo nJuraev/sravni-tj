@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'bot_username' => env('TELEGRAM_BOT_USERNAME'),
+        'channel_invite_link' => env('TELEGRAM_CHANNEL_INVITE_LINK'),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'rates_webhook_secret' => env('TELEGRAM_RATES_WEBHOOK_SECRET'),
+        'frontend_url' => env('FRONTEND_URL', 'https://sravni.tj'),
+    ],
+
 ];

@@ -9,6 +9,7 @@ import { bankLogoUrl } from '@/lib/bankIcon'
 import BankPicker from '@/components/ui/BankPicker.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 import SkeletonCard from '@/components/ui/SkeletonCard.vue'
+import BaseButton from '@/components/ui/BaseButton.vue'
 import BankRateCard from '@/components/rates/BankRateCard.vue'
 import FaqBlock, { type FaqItem } from '@/components/seo/FaqBlock.vue'
 
@@ -100,6 +101,23 @@ const groups = computed<BankRateGroup[]>(() => {
 })
 
 const isEmpty = computed(() => status.value === 'loaded' && groups.value.length === 0)
+
+const telegramSubscribing = ref(false)
+const telegramError = ref<string | null>(null)
+
+async function subscribeToTelegram() {
+  if (telegramSubscribing.value) return
+  telegramSubscribing.value = true
+  telegramError.value = null
+  try {
+    const res = await api.initTelegramSubscribe()
+    window.location.href = res.data.deep_link
+  } catch {
+    telegramError.value = t('ratesPage.telegramCta.error')
+  } finally {
+    telegramSubscribing.value = false
+  }
+}
 </script>
 
 <template>
@@ -109,6 +127,23 @@ const isEmpty = computed(() => status.value === 'loaded' && groups.value.length 
       <h1 class="rates__title">{{ t('ratesPage.title') }}</h1>
       <p class="rates__subtitle">{{ t('ratesPage.subtitle') }}</p>
     </header>
+
+    <div class="rates__telegram">
+      <div class="rates__telegram-text">
+        <p class="rates__telegram-title">{{ t('ratesPage.telegramCta.title') }}</p>
+        <p class="rates__telegram-subtitle">{{ t('ratesPage.telegramCta.subtitle') }}</p>
+      </div>
+      <BaseButton variant="secondary" :loading="telegramSubscribing" @click="subscribeToTelegram">
+        <svg class="rates__telegram-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M21.5 3.5 2.6 10.9c-1.2.5-1.2 1.2-.2 1.5l4.8 1.5 1.9 5.7c.2.6.4.8.8.8.3 0 .5-.1.7-.3l2.6-2.5 4.9 3.6c.9.5 1.5.2 1.7-.8L23.9 4.7c.3-1.3-.5-1.8-1.4-1.2ZM8.9 13.5l9.5-6-8 7.3-.3 3.1z"
+          />
+        </svg>
+        {{ t('ratesPage.telegramCta.button') }}
+      </BaseButton>
+      <p v-if="telegramError" class="rates__telegram-error" role="alert">{{ telegramError }}</p>
+    </div>
 
     <div v-if="status === 'loaded' && bankTiles.length" class="rates__filter">
       <BankPicker v-model="selectedBankIds" :banks="bankTiles" />
@@ -172,6 +207,36 @@ const isEmpty = computed(() => status.value === 'loaded' && groups.value.length 
 }
 .rates__subtitle {
   color: var(--color-text-secondary);
+}
+.rates__telegram {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  margin-bottom: var(--space-6);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-lg);
+}
+.rates__telegram-text {
+  flex: 1;
+  min-width: 220px;
+}
+.rates__telegram-title {
+  font-weight: 700;
+}
+.rates__telegram-subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--fs-sm);
+}
+.rates__telegram-icon {
+  width: 1.1em;
+  height: 1.1em;
+}
+.rates__telegram-error {
+  flex-basis: 100%;
+  color: var(--color-danger);
+  font-size: var(--fs-sm);
 }
 .rates__filter {
   display: flex;

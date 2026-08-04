@@ -65,6 +65,12 @@ const publicRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/ReviewFormView.vue'),
     meta: { locale: 'ru' },
   },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: () => import('@/views/ProfileView.vue'),
+    meta: { locale: 'ru' },
+  },
 ]
 
 // Admin stays single-language (no `/tj/admin` twin) — CSR-only, no SEO value.

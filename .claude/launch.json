@@ -11,6 +11,18 @@
       },
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "frontend-dev-real-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "frontend",
+      "env": {
+        "VITE_USE_MOCKS": "false",
+        "VITE_API_BASE_URL": "http://localhost:8000/api"
+      },
+      "port": 5174,
+      "autoPort": true
     }
   ]
 }

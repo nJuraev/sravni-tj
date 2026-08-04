@@ -281,3 +281,62 @@ export interface BankReviewCreateResponse {
   data: { id: number; status: string }
   message: string
 }
+
+/** POST /api/telegram/subscribe-init response. */
+export interface TelegramSubscribeInitResponse {
+  data: { deep_link: string; expires_in: number }
+}
+
+/** Профиль пользователя, зарегистрированного через Telegram (без пароля). */
+export interface Profile {
+  id: number
+  name: string
+  phone: string | null
+  telegram_username: string | null
+  created_at: string
+}
+
+export interface ProfileResponse {
+  data: Profile
+}
+
+/** PATCH /api/profile request body. */
+export interface ProfileUpdateRequest {
+  name: string
+  phone?: string | null
+}
+
+/** Сторона bank_currency_rates, с которой сравнивается порог алерта. */
+export type RateAlertOp = 'buy' | 'sell'
+
+/** С какой стороны порога срабатывает алерт. */
+export type RateAlertDirection = 'above' | 'below'
+
+export interface RateAlert {
+  id: number
+  category: RateCategory
+  currency: string
+  op: RateAlertOp
+  direction: RateAlertDirection
+  threshold: number
+  last_notified_value: number | null
+  last_notified_at: string | null
+  created_at: string
+}
+
+export interface RateAlertListResponse {
+  data: RateAlert[]
+}
+
+export interface RateAlertResponse {
+  data: RateAlert
+}
+
+/** POST /api/profile/alerts request body. */
+export interface RateAlertRequest {
+  category: RateCategory
+  currency: string
+  op: RateAlertOp
+  direction: RateAlertDirection
+  threshold: number
+}

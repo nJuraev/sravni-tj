@@ -137,16 +137,17 @@ func (s *PG) DiscoveryInstructions(ctx context.Context) ([]model.DiscoveryInstru
 
 // UpsertSourceURL добавляет/реактивирует источник по уникальному url.
 // (xmax = 0) различает вставку (true) от обновления существующей строки (false).
-func (s *PG) UpsertSourceURL(ctx context.Context, bankID int64, category model.Category, url string) (bool, error) {
+func (s *PG) UpsertSourceURL(ctx context.Context, bankID int64, category model.Category, url string, scraper string) (bool, error) {
 	const q = `
-		INSERT INTO bank_source_urls (bank_id, category, url, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, true, now(), now())
+		INSERT INTO bank_source_urls (bank_id, category, url, scraper, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, NULLIF($4, ''), true, now(), now())
 		ON CONFLICT (url) DO UPDATE SET
+			scraper    = NULLIF($4, ''),
 			is_active  = true,
 			updated_at = now()
 		RETURNING (xmax = 0) AS inserted`
 	var inserted bool
-	if err := s.pool.QueryRow(ctx, q, bankID, string(category), url).Scan(&inserted); err != nil {
+	if err := s.pool.QueryRow(ctx, q, bankID, string(category), url, scraper).Scan(&inserted); err != nil {
 		return false, fmt.Errorf("store: upsert источника: %w", err)
 	}
 	return inserted, nil
@@ -288,7 +289,8 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 	//     при залоченных features значения администратора имеют приоритет,
 	//     иначе свежий результат парсера побеждает, но ранее известные метки не теряются.
 	// status НЕ перетирается на update — уважаем администраторский статус (§8.2).
-	// При INSERT status = 'draft' (утверждённое решение: парсер вставляет как draft).
+	// При INSERT status = 'active' — продукт сразу виден в выдаче, без ручного
+	// подтверждения в админке; скрыть отдельный продукт админ может вручную (hidden).
 	var productID int64
 	if found {
 		const updateSQL = `
@@ -340,7 +342,7 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 				 created_at, updated_at)
 			VALUES
 				($1, $2, $3, $4, $5, $6,
-				 $7, $8, 'draft', $9,
+				 $7, $8, 'active', $9,
 				 $10, $11, $12, $13, $14, $15,
 				 $16, $17, $18, $19,
 				 $20, $21, $22, $23, $24,

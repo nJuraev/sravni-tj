@@ -80,6 +80,43 @@
 | `features` | object | нет | признаки (см. ниже) |
 | `bank` | object `BankRef` | нет | краткие данные банка |
 | `parsed_at` | string (ISO 8601) | да | время последнего парсинга |
+| `currencies` | array<string> | только в списке | все валюты группы (`source_url_id`) — бейджи в каталоге; см. ниже |
+| `variants` | array<`ProductVariant`> | только в детали | валютные варианты группы — для табов; см. ниже |
+
+#### Группировка валютных дублей (`source_url_id`)
+
+Один банковский продукт может иметь несколько строк `products` с одинаковым
+`source_url_id`, отличающихся только валютой (и, соответственно, ставкой/
+суммой/сроком/фичами для этой валюты). Контракт группирует их аддитивно,
+БЕЗ изменения формы существующих полей:
+
+- **`GET /api/products/{credits|deposits|installments}`** (список): дубли
+  схлопнуты в одну карточку-представителя на группу (приоритет `TJS`, иначе
+  первая по алфавиту валюта). Поле `currencies` — полный список валют группы
+  (для бейджей); переключателя валюты в списке нет.
+- **`GET /api/products/{id}`** (деталь): в ответе присутствует запрошенный
+  продукт (как и раньше) плюс `variants` — данные ВСЕХ валютных строк группы
+  (включая саму запрошенную), для табов переключения валюты на странице.
+  Если у продукта нет `source_url_id` (не привязан к странице банка) —
+  `variants` содержит один элемент, сам продукт; фронт в этом случае табы не
+  показывает (см. `ProductVariant` ниже — общие поля name/description/bank/
+  category НЕ дублируются в variants, считаются одинаковыми для всей группы).
+
+### `ProductVariant` (валютный вариант продукта, только в `variants` детали)
+
+| Поле | Тип | Null? | Описание |
+|---|---|---|---|
+| `id` | integer | нет | id этой конкретной валютной строки (используется для заявки/сравнения при выбранной валюте) |
+| `currency` | enum `TJS`\|`USD`\|`EUR` | нет | валюта варианта |
+| `rate_min` / `rate_max` | number | нет | как в `Product`, но для этой валюты |
+| `amount_min` / `amount_max` | number | да | как в `Product` |
+| `term_min` / `term_max` | integer | да | как в `Product` |
+| `rate_tiers` | array<RateTier> | нет | тарифная сетка этой валюты |
+| `features` | object | нет | признаки этой валюты |
+| `key_conditions_ru` / `_tg` | array<string> | да | как в `Product` |
+| `documents_ru` / `_tg` | array<string> | да | как в `Product` |
+| `source_url` | string | да | как в `Product` |
+| `parsed_at` | string (ISO 8601) | да | как в `Product` |
 
 #### `subcategory` (enum)
 
@@ -458,6 +495,87 @@ Accept-Language: ru
 
 ---
 
+## Telegram-подписка и профиль
+
+Регистрация — через Telegram-бота (без пароля). Сессия — `Authorization: Bearer <api_token>` (guard `user`), токен приходит в сообщении бота ссылкой `https://sravni.tj/profile?token=...` после `/start`.
+
+> `POST /api/telegram/webhook` (принимает update'ы от Telegram) и `POST /api/internal/rates-notify` (триггер рассылки алертов от Go-парсера курсов) — внутренние эндпоинты, защищены секретами в заголовках (`X-Telegram-Bot-Api-Secret-Token` / `X-Internal-Secret`), в публичный контракт не входят.
+
+### POST /api/telegram/subscribe-init
+
+Без авторизации. Генерирует одноразовый токен (живёт 15 минут) и возвращает deep-link на бота.
+
+```json
+{
+  "data": { "deep_link": "https://t.me/sravni_bot?start=Ax3f...", "expires_in": 900 }
+}
+```
+
+### GET /api/profile
+
+`200`:
+
+```json
+{
+  "data": {
+    "id": 12,
+    "name": "Иван",
+    "phone": "+992901234567",
+    "telegram_username": "ivan_tj",
+    "created_at": "2026-07-26T08:00:00Z"
+  }
+}
+```
+
+`401` — без токена/невалидный токен.
+
+### PATCH /api/profile
+
+| Поле | Тип | Обяз. | Правило |
+|---|---|---|---|
+| `name` | string | да | 2–255 символов |
+| `phone` | string\|null | нет | формат телефона (нормализуется на сервере) |
+
+`200` — тот же формат, что у `GET /api/profile`. `422` — невалидные данные.
+
+### GET /api/profile/alerts
+
+```json
+{
+  "data": [
+    {
+      "id": 3,
+      "category": "cash",
+      "currency": "USD",
+      "op": "buy",
+      "direction": "above",
+      "threshold": 11.2,
+      "last_notified_value": 11.5,
+      "last_notified_at": "2026-07-26T09:00:00Z",
+      "created_at": "2026-07-26T08:05:00Z"
+    }
+  ]
+}
+```
+
+### POST /api/profile/alerts
+
+| Поле | Тип | Обяз. | Правило |
+|---|---|---|---|
+| `category` | string | да | `cash` \| `transfer` |
+| `currency` | string | да | 3 латинские буквы (нормализуется в верхний регистр) |
+| `op` | string | да | `buy` \| `sell` — сторона курса, сравниваемая с порогом |
+| `direction` | string | да | `above` \| `below` — срабатывает, когда лучший курс ≥ (`above`) или ≤ (`below`) порога |
+| `threshold` | number | да | > 0 |
+
+`201` — объект алерта (см. `GET /api/profile/alerts`). `422` — невалидные данные, дубликат (тот же `category`+`currency`+`op`+`direction` уже подписан) либо превышен лимит в 3 алерта на пользователя.
+
+### DELETE /api/profile/alerts/{id}
+
+`204`. `404` — чужой или несуществующий алерт.
+
+---
+
 ## Сводная таблица кодов ответов
 
 | Эндпоинт | Успех | Ошибки |
@@ -468,6 +586,12 @@ Accept-Language: ru
 | `GET /api/products/{id}` | `200` | `404` (нет/скрыт/банк неактивен) |
 | `GET /api/banks` | `200` | — |
 | `POST /api/leads` | `201` | `422` (невалидные данные / `consent != true` / скрытый product_id), `404` (несуществующий маршрут) |
+| `POST /api/telegram/subscribe-init` | `200` | — |
+| `GET /api/profile` | `200` | `401` (нет/невалидный токен) |
+| `PATCH /api/profile` | `200` | `401`, `422` |
+| `GET /api/profile/alerts` | `200` | `401` |
+| `POST /api/profile/alerts` | `201` | `401`, `422` (невалидные данные/дубликат) |
+| `DELETE /api/profile/alerts/{id}` | `204` | `401`, `404` (чужой/несуществующий) |
 
 ---
 

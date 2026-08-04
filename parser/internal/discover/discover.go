@@ -130,7 +130,7 @@ func (d *Discoverer) process(ctx context.Context, in model.DiscoveryInstruction)
 
 	inserted, updated := 0, 0
 	for _, u := range urls {
-		ins, err := d.st.UpsertSourceURL(ctx, in.BankID, in.Category, u)
+		ins, err := d.st.UpsertSourceURL(ctx, in.BankID, in.Category, u, in.Scraper)
 		if err != nil {
 			d.log.Warn("discovery: upsert источника не удался", "instruction_id", in.ID, "url", u, "err", err)
 			continue

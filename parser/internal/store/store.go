@@ -73,8 +73,10 @@ type Store interface {
 	// UpsertSourceURL идемпотентно добавляет/реактивирует источник в
 	// bank_source_urls по уникальному url. Возвращает true, если строка создана
 	// (false — если уже существовала и была обновлена). Найденные discovery URL
-	// активируются (is_active=true).
-	UpsertSourceURL(ctx context.Context, bankID int64, category model.Category, url string) (bool, error)
+	// активируются (is_active=true). scraper наследуется от инструкции discovery,
+	// иначе парсер источника падает обратно на дефолтный скрейпер (firecrawl),
+	// что ломает SPA-сайты, требующие "browser".
+	UpsertSourceURL(ctx context.Context, bankID int64, category model.Category, url string, scraper string) (bool, error)
 
 	// TouchInstruction обновляет last_run_at инструкции после обработки.
 	TouchInstruction(ctx context.Context, instructionID int64, at time.Time) error

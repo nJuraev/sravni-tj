@@ -32,8 +32,9 @@ scrape → extract → validate → split-by-currency → upsert (+ outdate) →
 - **Идемпотентность:** upsert по `(source_url_id, external_key)`, где
   `external_key = normalize(name) + "|" + currency`.
 - **1 продукт = 1 валюта:** мультивалютный продукт банка — это N записей `products`.
-- **status при вставке = `draft`** (DEFAULT в БД); администраторский статус
-  при обновлении не перетирается.
+- **status при вставке = `active`** (сразу виден в выдаче, без ручного
+  подтверждения); администраторский статус при обновлении не перетирается —
+  вручную скрытый (`hidden`) продукт парсер обратно в `active` не переводит.
 - **Устаревание:** при успешном непустом прогоне продукты источника, не
   встреченные в этом прогоне, переводятся в `outdated`.
 - **Изоляция:** падение одной задачи не валит остальные; код выхода 0 при
@@ -59,6 +60,8 @@ scrape → extract → validate → split-by-currency → upsert (+ outdate) →
 | `PARSER_CONCURRENCY` | int | `1` | нет | Максимум задач параллельно. |
 | `PARSER_HTTP_TIMEOUT_SEC` | int | `60` | нет | Таймаут на скрейп одной страницы. |
 | `PARSER_AI_TIMEOUT_SEC` | int | `120` | нет | Таймаут на один вызов AI. |
+| `BACKEND_RATES_WEBHOOK_URL` | string | — | нет | Только `cmd/rates`: URL `POST /api/internal/rates-notify` в Laravel, вызывается best-effort после завершения прогона курсов (запускает рассылку алертов по курсу). Пусто = не вызывается. |
+| `BACKEND_RATES_WEBHOOK_SECRET` | string | — | нет | Секрет, сверяемый Laravel-стороной (заголовок `X-Internal-Secret`). Секрет. |
 
 ## Сборка и тесты (в Docker, `golang:1.23`)
 

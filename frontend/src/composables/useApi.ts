@@ -28,5 +28,6 @@ export function useApi() {
     getRates: (query?: RateListQuery) => api.getRates(l(), query),
     getBankReviews: (bankId: number, page?: number) => api.getBankReviews(l(), bankId, page),
     createBankReview: (bankId: number, body: BankReviewRequest) => api.createBankReview(l(), bankId, body),
+    initTelegramSubscribe: () => api.initTelegramSubscribe(l()),
   }
 }

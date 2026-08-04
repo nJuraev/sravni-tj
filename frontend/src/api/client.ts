@@ -13,6 +13,7 @@ import type {
   ProductResponse,
   RateListQuery,
   RateListResponse,
+  TelegramSubscribeInitResponse,
 } from '@/types/api'
 import { WIRE_LOCALE, type Locale } from '@/types/api'
 import { ApiError } from './errors'
@@ -26,6 +27,7 @@ import {
   mockGetProducts,
   mockGetRates,
   mockPostLead,
+  mockTelegramSubscribeInit,
 } from './mocks/handlers'
 
 // Under Node SSR, prefer the private/internal backend URL (e.g. Railway's
@@ -167,6 +169,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     })
+  },
+
+  initTelegramSubscribe(locale: Locale): Promise<TelegramSubscribeInitResponse> {
+    if (USE_MOCKS) return mockTelegramSubscribeInit()
+    return request<TelegramSubscribeInitResponse>(locale, '/telegram/subscribe-init', { method: 'POST' })
   },
 }
 

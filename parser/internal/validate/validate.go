@@ -279,14 +279,14 @@ func validateNamePresent(p model.ParsedProduct) error {
 	return &Error{Reason: "ни name_ru, ни name_tg не заданы (пустые имена)"}
 }
 
-// validateRateRange: 0 < rate <= 100 для обеих границ и min <= max (§5.1).
-// Граница 0 недопустима (ставка 0% — вероятная галлюцинация), 100 допустима.
+// validateRateRange: 0 <= rate <= 100 для обеих границ и min <= max (§5.1).
+// 0% допустима (реальные акционные ставки партнёрских программ), отрицательная — нет.
 func validateRateRange(min, max float64, field string) error {
-	if !(min > 0 && min <= 100) {
-		return &Error{Reason: fmt.Sprintf("%s: rate_min=%g вне диапазона (0;100]", field, min)}
+	if !(min >= 0 && min <= 100) {
+		return &Error{Reason: fmt.Sprintf("%s: rate_min=%g вне диапазона [0;100]", field, min)}
 	}
-	if !(max > 0 && max <= 100) {
-		return &Error{Reason: fmt.Sprintf("%s: rate_max=%g вне диапазона (0;100]", field, max)}
+	if !(max >= 0 && max <= 100) {
+		return &Error{Reason: fmt.Sprintf("%s: rate_max=%g вне диапазона [0;100]", field, max)}
 	}
 	if min > max+epsilon {
 		return &Error{Reason: fmt.Sprintf("%s: rate_min=%g > rate_max=%g", field, min, max)}
@@ -318,8 +318,8 @@ func validateAmountTerm(p model.ParsedProduct) error {
 
 // validateTier: ставка/суммы/сроки одного тира (§5.1, §5.2).
 func validateTier(t model.RateTier, idx int) error {
-	if !(t.Rate > 0 && t.Rate <= 100) {
-		return &Error{Reason: fmt.Sprintf("rate_tiers[%d]: rate=%g вне диапазона (0;100]", idx, t.Rate)}
+	if !(t.Rate >= 0 && t.Rate <= 100) {
+		return &Error{Reason: fmt.Sprintf("rate_tiers[%d]: rate=%g вне диапазона [0;100]", idx, t.Rate)}
 	}
 	if t.AmountMin != nil && !(*t.AmountMin > 0) {
 		return &Error{Reason: fmt.Sprintf("rate_tiers[%d]: amount_min=%g должна быть > 0", idx, *t.AmountMin)}

@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Middleware\SetLocaleFromHeader;
+use App\Http\Middleware\VerifyRatesWebhookSecret;
+use App\Http\Middleware\VerifyTelegramWebhookSecret;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -25,6 +27,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Локаль для сообщений об ошибках валидации по Accept-Language (ru/tg).
         $middleware->api(append: [
             SetLocaleFromHeader::class,
+        ]);
+
+        $middleware->alias([
+            'telegram.webhook' => VerifyTelegramWebhookSecret::class,
+            'rates.webhook' => VerifyRatesWebhookSecret::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Bank;
+use App\Models\BankSourceUrl;
 use App\Models\Product;
 use App\Models\ProductRate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -345,5 +346,77 @@ class ProductCatalogTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.id', (int) $high->id)
             ->assertJsonPath('data.1.id', (int) $low->id);
+    }
+
+    public function test_list_collapses_currency_duplicates_to_one_card_with_badges(): void
+    {
+        $bank = Bank::factory()->create();
+        $sourceUrl = BankSourceUrl::factory()->for($bank, 'bank')->create();
+
+        $tjs = Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'TJS']);
+        Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'USD']);
+        Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'EUR']);
+        // Другая группа (другой source_url_id) — не должна схлопнуться с первой.
+        Product::factory()->for($bank, 'bank')->credit()->create(['currency' => 'TJS']);
+
+        $response = $this->getJson('/api/products/credits')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $card = collect($response->json('data'))->firstWhere('id', $tjs->id);
+        $this->assertSame(['TJS', 'USD', 'EUR'], $card['currencies']);
+    }
+
+    public function test_list_currency_filter_leaves_one_row_per_group(): void
+    {
+        $bank = Bank::factory()->create();
+        $sourceUrl = BankSourceUrl::factory()->for($bank, 'bank')->create();
+
+        Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'TJS']);
+        $usd = Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'USD']);
+
+        $this->getJson('/api/products/credits?currency=USD')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', (int) $usd->id);
+    }
+
+    public function test_show_includes_sibling_currency_variants(): void
+    {
+        $bank = Bank::factory()->create();
+        $sourceUrl = BankSourceUrl::factory()->for($bank, 'bank')->create();
+
+        $tjs = Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->deposit()->create(['currency' => 'TJS', 'rate_min' => 10, 'rate_max' => 12]);
+        $usd = Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->deposit()->create(['currency' => 'USD', 'rate_min' => 3, 'rate_max' => 5]);
+
+        $response = $this->getJson('/api/products/'.$tjs->id)
+            ->assertOk()
+            ->assertJsonCount(2, 'data.variants');
+
+        $currencies = array_column($response->json('data.variants'), 'currency');
+        sort($currencies);
+        $this->assertSame(['TJS', 'USD'], $currencies);
+
+        $usdVariant = collect($response->json('data.variants'))->firstWhere('id', $usd->id);
+        $this->assertEquals(3.0, $usdVariant['rate_min']);
+    }
+
+    public function test_show_without_source_url_has_single_variant_no_currencies_key(): void
+    {
+        $bank = Bank::factory()->create();
+        $product = Product::factory()->for($bank, 'bank')->credit()->create();
+
+        $this->getJson('/api/products/'.$product->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.variants')
+            ->assertJsonPath('data.variants.0.id', (int) $product->id)
+            ->assertJsonMissingPath('data.currencies');
     }
 }

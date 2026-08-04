@@ -53,6 +53,16 @@ return [
             'storage_key' => 'api_token',
             'hash' => false,
         ],
+
+        // Публичный пользователь (telegram-регистрация, без пароля):
+        // тот же token-guard, что и admin, поверх users.api_token.
+        'user' => [
+            'driver' => 'token',
+            'provider' => 'users',
+            'input_key' => 'api_token',
+            'storage_key' => 'api_token',
+            'hash' => false,
+        ],
     ],
 
     /*

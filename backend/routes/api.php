@@ -6,10 +6,15 @@ use App\Http\Controllers\Admin\LeadController as AdminLeadController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\BankController;
+use App\Http\Controllers\Api\Internal\RatesNotifyController;
 use App\Http\Controllers\Api\BankReviewController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\RateAlertController;
 use App\Http\Controllers\Api\RateController;
+use App\Http\Controllers\Api\TelegramController;
+use App\Http\Controllers\Api\TelegramWebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -42,6 +47,26 @@ Route::post('/banks/{bank}/reviews', [BankReviewController::class, 'store'])
     ->whereNumber('bank');
 
 Route::post('/leads', [LeadController::class, 'store']);
+
+// Подписка на уведомления в Telegram (регистрация без пароля через бота).
+Route::post('/telegram/subscribe-init', [TelegramController::class, 'subscribeInit']);
+Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])
+    ->middleware('telegram.webhook');
+
+// Вызывается Go-парсером курсов после завершения прогона (внутренний секрет).
+Route::post('/internal/rates-notify', [RatesNotifyController::class, 'handle'])
+    ->middleware('rates.webhook');
+
+// Профиль telegram-пользователя (guard `user`, Authorization: Bearer <api_token>).
+Route::middleware('auth:user')->group(function (): void {
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::patch('/profile', [ProfileController::class, 'update']);
+
+    Route::get('/profile/alerts', [RateAlertController::class, 'index']);
+    Route::post('/profile/alerts', [RateAlertController::class, 'store']);
+    Route::delete('/profile/alerts/{alert}', [RateAlertController::class, 'destroy'])
+        ->whereNumber('alert');
+});
 
 /*
 |--------------------------------------------------------------------------

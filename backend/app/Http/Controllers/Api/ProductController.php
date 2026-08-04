@@ -9,8 +9,10 @@ use App\Http\Requests\ProductIndexRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use Illuminate\Contracts\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * Каталог продуктов (только чтение). Разнесён по типам продукта:
@@ -28,6 +30,9 @@ use Illuminate\Http\Request;
 class ProductController extends Controller
 {
     private const SORT_FIELDS = ['rate_min', 'rate_max', 'amount_min', 'term_min', 'created_at'];
+
+    /** Приоритет валюты как представителя группы (source_url_id) в каталоге: TJS первой. */
+    private const CURRENCY_ORDER = ['TJS' => 0, 'USD' => 1, 'EUR' => 2];
 
     /**
      * GET /api/products/credits — кредиты, по умолчанию от выгодных (меньшая ставка).
@@ -64,14 +69,37 @@ class ProductController extends Controller
             ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates'])
             ->findOrFail($product);
 
+        // Валютные варианты того же банковского продукта — для табов на странице
+        // детали (product.variants в ProductResource). Продукт без source_url_id
+        // (одиночный, не привязан к странице банка) — единственный вариант сам по себе.
+        $model->setRelation('currencyVariants', $this->loadCurrencyVariants($model));
+
         return response()->json([
             'data' => new ProductResource($model),
         ]);
     }
 
     /**
+     * @return Collection<int, Product>
+     */
+    private function loadCurrencyVariants(Product $model): Collection
+    {
+        $query = Product::query()->visible()->with('rates');
+
+        if ($model->source_url_id !== null) {
+            $query->where('source_url_id', $model->source_url_id);
+        } else {
+            $query->where('id', $model->id);
+        }
+
+        return $query->get();
+    }
+
+    /**
      * Общая выдача типового каталога: фиксирует категорию, скрывает «особые»
-     * (если не запрошены), применяет фильтры, сортировку и пагинацию.
+     * (если не запрошены), применяет фильтры, дедуплицирует валютные дубли
+     * одного банковского продукта (source_url_id) до одной карточки-представителя,
+     * применяет сортировку и пагинацию.
      */
     private function list(ProductIndexRequest $request, string $category, string $defaultSort): JsonResponse
     {
@@ -80,17 +108,27 @@ class ProductController extends Controller
 
         $query = Product::query()
             ->visible()
-            ->where('category', $category)
-            ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates']);
+            ->where('category', $category);
 
         $this->applySpecialVisibility($query, $request);
         $this->applyFilters($query, $request);
-        $this->applySort($query, (string) $request->input('sort', $defaultSort));
 
-        $paginator = $query->paginate(
+        // Дедуп ПОСЛЕ фильтров (если задан ?currency=, в группе и так остаётся
+        // максимум одна валюта) — представитель группы, остальные валюты видны
+        // как бейджи (attachAvailableCurrencies), а не отдельными карточками.
+        $representativeIds = $this->dedupeToGroupRepresentatives($query);
+
+        $finalQuery = Product::query()
+            ->whereIn('id', $representativeIds)
+            ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates']);
+        $this->applySort($finalQuery, (string) $request->input('sort', $defaultSort));
+
+        $paginator = $finalQuery->paginate(
             perPage: $perPage,
             page: (int) $request->integer('page', 1),
         );
+
+        $this->attachAvailableCurrencies($paginator->getCollection());
 
         return response()->json([
             'data' => ProductResource::collection($paginator->getCollection()),
@@ -102,6 +140,57 @@ class ProductController extends Controller
                 'total_pages' => $paginator->total() === 0 ? 0 : $paginator->lastPage(),
             ],
         ]);
+    }
+
+    /**
+     * Группирует отфильтрованные строки по source_url_id (продукт без него —
+     * одиночная группа сам с собой) и выбирает id представителя на группу:
+     * приоритет TJS, иначе алфавитный порядок валюты.
+     *
+     * @param  Builder<Product>  $query
+     * @return array<int, int>
+     */
+    private function dedupeToGroupRepresentatives(Builder $query): array
+    {
+        $rows = (clone $query)->get(['id', 'source_url_id', 'currency']);
+
+        return $rows
+            ->groupBy(fn (Product $p) => $p->source_url_id ?? "single-{$p->id}")
+            ->map(fn (Collection $group) => $group
+                ->sortBy(fn (Product $p) => self::CURRENCY_ORDER[$p->currency] ?? 99)
+                ->first()
+                ->id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Проставляет каждой карточке страницы полный список валют её группы
+     * (все visible-строки с тем же source_url_id) для бейджей в каталоге.
+     * Игнорирует численные фильтры запроса (сумма/срок/ставка/валюта) —
+     * бейджи показывают, что вообще доступно, а не что прошло фильтр.
+     */
+    private function attachAvailableCurrencies(EloquentCollection $products): void
+    {
+        $sourceUrlIds = $products->pluck('source_url_id')->filter()->unique()->values();
+
+        $currenciesBySourceUrl = Product::query()
+            ->visible()
+            ->whereIn('source_url_id', $sourceUrlIds)
+            ->get(['id', 'source_url_id', 'currency'])
+            ->groupBy('source_url_id')
+            ->map(fn (Collection $group) => $group->pluck('currency')->unique()
+                ->sortBy(fn (string $c) => self::CURRENCY_ORDER[$c] ?? 99)
+                ->values()
+                ->all());
+
+        foreach ($products as $product) {
+            $currencies = $product->source_url_id !== null
+                ? ($currenciesBySourceUrl[$product->source_url_id] ?? [$product->currency])
+                : [$product->currency];
+
+            $product->setAttribute('available_currencies', $currencies);
+        }
     }
 
     /**

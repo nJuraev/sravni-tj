@@ -62,6 +62,15 @@ type Config struct {
 	HTTPTimeout time.Duration
 	// AITimeout — таймаут на один вызов AI.
 	AITimeout time.Duration
+
+	// BackendRatesWebhookURL — POST-адрес Laravel (/api/internal/rates-notify),
+	// вызывается best-effort после завершения прогона курсов (cmd/rates), чтобы
+	// запустить рассылку алертов по курсу. Пусто = уведомление не отправляется
+	// (фича опциональна, не роняет парсер).
+	BackendRatesWebhookURL string
+	// BackendRatesWebhookSecret — секрет, сверяемый Laravel-стороной
+	// (заголовок X-Internal-Secret). Секрет.
+	BackendRatesWebhookSecret string
 }
 
 // Load читает и валидирует конфигурацию из окружения.
@@ -80,6 +89,9 @@ func Load() (*Config, error) {
 		BankIDs:       parseInt64List(os.Getenv("PARSER_BANK_IDS")),
 		HTTPTimeout:   time.Duration(parseInt(os.Getenv("PARSER_HTTP_TIMEOUT_SEC"), 60)) * time.Second,
 		AITimeout:     time.Duration(parseInt(os.Getenv("PARSER_AI_TIMEOUT_SEC"), 120)) * time.Second,
+
+		BackendRatesWebhookURL:    os.Getenv("BACKEND_RATES_WEBHOOK_URL"),
+		BackendRatesWebhookSecret: os.Getenv("BACKEND_RATES_WEBHOOK_SECRET"),
 	}
 
 	if err := cfg.validate(); err != nil {

@@ -370,7 +370,7 @@ banks (1) ──< leads (N) >── (1) products      (leads.bank_id денор�
    RETURNING id;
    ```
    - `external_key` = стабильный ключ продукта внутри источника (нормализованное `name_ru` + `currency`). Делает повторный парсинг **идемпотентным**: тот же продукт обновляется, а не дублируется.
-   - `status` при upsert **не перетирается** автоматически на `active` — политика статуса решается отдельно (см. открытый вопрос §10.1). По умолчанию новый продукт = `draft` или `active` согласно решению.
+   - `status` при upsert **не перетирается** — если продукт уже существует и админ выставил ему `hidden`/`draft`/`outdated` вручную, парсер это уважает. При INSERT нового продукта `status = active`.
 3. **Replace-all тарифной сетки** (источник истины — `rate_tiers` из AI):
    ```
    DELETE FROM product_rates WHERE product_id = :id;
@@ -399,3 +399,49 @@ banks (1) ──< leads (N) >── (1) products      (leads.bank_id денор�
 3. **Enum через CHECK vs нативный `ENUM` type:** документ предлагает `VARCHAR + CHECK` (проще эволюция). Если команда предпочитает строгие нативные `ENUM` Postgres — нужно подтвердить (повлияет на миграции и на маппинг в Laravel/Go).
 4. **`external_key` для идемпотентности:** подтвердить формулу стабильного ключа продукта (`normalize(name) + currency`?). Если банки переименовывают продукты между прогонами — ключ «поплывёт» и появятся дубли; возможно, нужен более устойчивый признак (URL продукта/якорь на странице).
 5. **PII в `leads` и retention:** телефон/ФИО — персональные данные. Нужна ли политика хранения/удаления (срок жизни заявки), шифрование/маскирование, и подтверждение, что `consent = true` на уровне БД (CHECK) — желаемый жёсткий инвариант. `bank_id` в `leads` сделан `ON DELETE RESTRICT` — подтвердить, что банк с заявками нельзя удалять.
+
+---
+
+## 11. Таблица `users` (расширена под Telegram-регистрацию)
+
+Публичный пользователь сайта. Идентичность — Telegram (без пароля): регистрация происходит через deep-link в бота (`/start <token>`), сессия — `api_token` (token-guard, аналогично `admin_users`). Базовая структура (`id`, `name`, `email`, `password`, `remember_token`, таймстампы) — стандартный Laravel-scaffold; ниже — добавленные колонки.
+
+| Колонка | Тип | NULL | DEFAULT | Ограничения |
+|---|---|---|---|---|
+| `telegram_id` | BIGINT | NULL | — | UNIQUE; telegram user id, идентичность |
+| `telegram_username` | VARCHAR(255) | NULL | — | |
+| `phone` | VARCHAR(32) | NULL | — | необязательное поле, вводится в профиле |
+| `api_token` | VARCHAR(80) | NULL | — | UNIQUE; сессия (token-guard `user`), plaintext как у `admin_users` |
+
+`email`/`password` стали **nullable** (были NOT NULL в дефолтном scaffold) — telegram-пользователь их не задаёт.
+
+**CHECK:**
+- `chk_users_identity`: `email IS NOT NULL OR telegram_id IS NOT NULL`
+
+**Индексы:** `uq_users_telegram_id` UNIQUE (`telegram_id`), `uq_users_api_token` UNIQUE (`api_token`).
+
+---
+
+## 12. Таблица `rate_alert_subscriptions`
+
+Подписка пользователя на уведомление о курсе валюты. Уведомление шлётся, когда лучший курс выбранной стороны (`op`) среди активных банков пересекает `threshold` со стороны `direction` (`above`: максимум ≥ порога; `below`: минимум ≤ порога) **и** изменился с прошлого уведомления (`last_notified_value`) — не при каждом прогоне парсера курсов. Максимум 3 алерта на пользователя (проверка в API).
+
+| Колонка | Тип | NULL | DEFAULT | Ограничения |
+|---|---|---|---|---|
+| `id` | BIGINT IDENTITY | NOT NULL | — | PK |
+| `user_id` | BIGINT | NOT NULL | — | FK → users(id) ON DELETE CASCADE |
+| `category` | VARCHAR(16) | NOT NULL | — | CHECK IN ('cash','transfer') |
+| `currency` | VARCHAR(3) | NOT NULL | — | |
+| `op` | VARCHAR(4) | NOT NULL | — | CHECK IN ('buy','sell') — сторона `bank_currency_rates`, сравниваемая с порогом |
+| `direction` | VARCHAR(5) | NOT NULL | — | CHECK IN ('above','below') — с какой стороны порога срабатывает |
+| `threshold` | NUMERIC(12,4) | NOT NULL | — | CHECK > 0 |
+| `last_notified_value` | NUMERIC(12,4) | NULL | — | для де-дупа повторных уведомлений |
+| `last_notified_at` | TIMESTAMPTZ | NULL | — | |
+| `is_active` | BOOLEAN | NOT NULL | `true` | |
+| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL | `now()` | |
+
+**FK:** `user_id` → `users(id)` **ON DELETE CASCADE**.
+
+**Индексы:** `uq_ras_key` UNIQUE (`user_id`, `category`, `currency`, `op`, `direction`) — не дублировать один и тот же алерт.
+
+**Триггер рассылки:** Go-парсер курсов (`cmd/rates`) после завершения прогона делает best-effort `POST /api/internal/rates-notify` (секрет в заголовке `X-Internal-Secret`) → Laravel диспатчит queued Job `DispatchRateAlerts`, который проходит все `is_active` подписки и шлёт сообщения через Telegram Bot API.

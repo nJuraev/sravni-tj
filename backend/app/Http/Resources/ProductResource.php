@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\MapsProductFields;
 use App\Models\Product;
-use App\Models\ProductRate;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Collection;
 
 /**
  * Полное представление продукта (контракт docs/api/contracts.md, объект Product).
@@ -18,25 +17,19 @@ use Illuminate\Support\Collection;
  *  - rate_* агрегаты И полная сетка rate_tiers присутствуют ВСЕГДА;
  *  - features всегда содержит фиксированный набор булевых ключей контракта
  *    (отсутствующий/неизвестный признак → false);
- *  - currency продукта проставляется в каждый тир (одна валюта на продукт).
+ *  - currency продукта проставляется в каждый тир (одна валюта на продукт);
+ *  - `currencies`/`variants` — аддитивное расширение контракта для группировки
+ *    валютных дублей одного банковского продукта (source_url_id), см.
+ *    ProductController::attachAvailableCurrencies()/loadCurrencyVariants().
  *
  * @mixin Product
  */
 class ProductResource extends JsonResource
 {
-    /**
-     * Контрактный набор булевых признаков. Ключи фиксированы контрактом
-     * (frozen). В БД (ai-output-schema) признак пополнения называется
-     * "replenishable" — наружу по контракту отдаётся как "replenishment".
-     *
-     * @var array<string, string> map[contractKey => storageKey]
-     */
-    private const FEATURE_MAP = [
-        'online_application' => 'online_application',
-        'no_guarantor' => 'no_guarantor',
-        'capitalization' => 'capitalization',
-        'replenishment' => 'replenishable',
-    ];
+    use MapsProductFields;
+
+    /** Порядок валют в variants/currencies: TJS первой (дефолт для тарифов банков). */
+    private const CURRENCY_ORDER = ['TJS' => 0, 'USD' => 1, 'EUR' => 2];
 
     /**
      * @return array<string, mixed>
@@ -68,43 +61,19 @@ class ProductResource extends JsonResource
             'features' => $this->mapFeatures(),
             'bank' => new BankResource($this->whenLoaded('bank')),
             'parsed_at' => optional($this->parsed_at)->toIso8601ZuluString(),
+            // Список валют группы (source_url_id) — бейджи в каталоге, без открытия
+            // отдельных карточек. Присутствует только когда контроллер его проставил.
+            'currencies' => $this->when($this->available_currencies !== null, fn () => $this->available_currencies),
+            // Полные данные валютных вариантов группы — для табов на detail-странице.
+            // Присутствует только когда контроллер явно подгрузил currencyVariants (show()).
+            'variants' => $this->whenLoaded(
+                'currencyVariants',
+                fn () => ProductVariantResource::collection(
+                    $this->currencyVariants
+                        ->sortBy(fn (Product $v) => self::CURRENCY_ORDER[$v->currency] ?? 99)
+                        ->values()
+                ),
+            ),
         ];
-    }
-
-    /**
-     * Тарифная сетка с проставленной валютой продукта в каждый тир.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    private function mapRateTiers(): array
-    {
-        /** @var Collection<int, ProductRate> $rates */
-        $rates = $this->whenLoaded('rates', fn () => $this->rates, collect());
-
-        if (! $rates instanceof Collection) {
-            $rates = collect($rates);
-        }
-
-        return $rates
-            ->map(fn (ProductRate $rate): array => (new RateTierResource($rate, $this->currency))->toArray(request()))
-            ->values()
-            ->all();
-    }
-
-    /**
-     * Фиксированный набор булевых признаков контракта; неизвестное → false.
-     *
-     * @return array<string, bool>
-     */
-    private function mapFeatures(): array
-    {
-        $stored = is_array($this->features) ? $this->features : [];
-
-        $out = [];
-        foreach (self::FEATURE_MAP as $contractKey => $storageKey) {
-            $out[$contractKey] = ($stored[$storageKey] ?? false) === true;
-        }
-
-        return $out;
     }
 }

@@ -266,4 +266,4 @@ Constrained decoding НЕ проверяет эти инварианты — п�
 | `rate_tiers[]` | `product_rates` (строки) | по строке на элемент массива |
 | `source_note` | `parser_runs` (через лог) | на витрину не идёт |
 
-Поля, которые AI **не** заполняет (проставляет парсер/БД): `id`, `bank_id`, `source_url_id`, `status` (по умолчанию `draft` или `active` по политике), `parsed_at`, `created_at`, `updated_at`.
+Поля, которые AI **не** заполняет (проставляет парсер/БД): `id`, `bank_id`, `source_url_id`, `status` (парсер вставляет как `active`), `parsed_at`, `created_at`, `updated_at`.
