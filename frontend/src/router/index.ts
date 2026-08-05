@@ -1,7 +1,6 @@
 import { createMemoryHistory, createRouter, createWebHistory, type Router, type RouteRecordRaw } from 'vue-router'
-import type { I18n } from 'vue-i18n'
 import type { Category } from '@/types/api'
-import { i18n, setLocale } from '@/i18n'
+import { i18n, setLocale, type AppI18n } from '@/i18n'
 import { getLocaleFromRoute } from './locale'
 import { withLocalePrefix } from './localizedRoutes'
 
@@ -123,7 +122,7 @@ const routes: RouteRecordRaw[] = [
  * requests never share navigation state. Takes the request's own i18n
  * instance so the locale-sync guard never touches a shared singleton either.
  */
-export function createAppRouter(i18nInstance: I18n): Router {
+export function createAppRouter(i18nInstance: AppI18n): Router {
   const router = createRouter({
     // No `window`/browser history under Node SSR — createMemoryHistory lets
     // entry-server.ts push the request URL directly (official Vue SSR pattern).

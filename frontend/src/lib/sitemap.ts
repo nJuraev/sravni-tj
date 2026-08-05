@@ -21,7 +21,7 @@ export async function collectSitemapUrls(): Promise<UrlPair[]> {
   const router = createAppRouter(createI18nInstance('ru'))
   const pairs: UrlPair[] = []
 
-  function addNamed(name: string, params: Record<string, unknown> = {}) {
+  function addNamed(name: string, params: Record<string, string | number> = {}) {
     const ru = `${SITE_ORIGIN}${router.resolve({ name, params }).fullPath}`
     const tj = `${SITE_ORIGIN}${router.resolve({ name: `${name}-tj`, params }).fullPath}`
     pairs.push({ ru, tj })

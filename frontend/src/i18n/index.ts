@@ -1,4 +1,4 @@
-import { createI18n, type I18n } from 'vue-i18n'
+import { createI18n } from 'vue-i18n'
 import type { Locale } from '@/types/api'
 import ru from './locales/ru.json'
 import tj from './locales/tj.json'
@@ -28,13 +28,15 @@ export function createI18nInstance(locale: Locale = loadLocale()) {
 
 export const i18n = createI18nInstance()
 
+export type AppI18n = ReturnType<typeof createI18nInstance>
+
 /**
  * Switch locale on a given i18n instance (defaults to the module singleton);
  * persists the choice client-side only. `<html lang>` is not set here — it's
  * owned centrally by App.vue via @unhead/vue (SSR-safe; this module has no
  * DOM access under Node).
  */
-export function setLocale(locale: Locale, target: I18n = i18n): void {
+export function setLocale(locale: Locale, target: AppI18n = i18n): void {
   target.global.locale.value = locale
   if (typeof window === 'undefined') return
   localStorage.setItem(STORAGE_KEY, locale)
