@@ -1,8 +1,9 @@
 import type { Currency, RateTier } from '@/types/api'
 
-function inRange(value: number, from: number, to: number | null): boolean {
+function inRange(value: number, from: number | null, to: number | null): boolean {
+  const lower = from ?? Number.NEGATIVE_INFINITY
   const upper = to ?? Number.POSITIVE_INFINITY
-  return value >= from && value <= upper
+  return value >= lower && value <= upper
 }
 
 /**

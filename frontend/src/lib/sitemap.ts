@@ -2,10 +2,28 @@ import { createAppRouter } from '@/router'
 import { createI18nInstance } from '@/i18n'
 import { api } from '@/api/client'
 import { SITE_ORIGIN } from '@/lib/siteOrigin'
+import type { Category, Product } from '@/types/api'
 
 interface UrlPair {
   ru: string
   tj: string
+}
+
+// API caps per_page at 100 (ProductIndexRequest) — page through it rather
+// than requesting one oversized batch, so this keeps working once a catalog
+// grows past a single page.
+const SITEMAP_PAGE_SIZE = 100
+
+async function fetchAllProducts(category: Category): Promise<Product[]> {
+  const all: Product[] = []
+  let page = 1
+  for (;;) {
+    const res = await api.getProducts('ru', { category, page, per_page: SITEMAP_PAGE_SIZE })
+    all.push(...res.data)
+    if (page >= res.pagination.total_pages) break
+    page++
+  }
+  return all
 }
 
 /**
@@ -36,12 +54,12 @@ export async function collectSitemapUrls(): Promise<UrlPair[]> {
 
   // Dynamic: the API already filters to active products/banks only.
   const [credits, deposits, installments, banks] = await Promise.all([
-    api.getProducts('ru', { category: 'credit', per_page: 500 }),
-    api.getProducts('ru', { category: 'deposit', per_page: 500 }),
-    api.getProducts('ru', { category: 'installment', per_page: 500 }),
+    fetchAllProducts('credit'),
+    fetchAllProducts('deposit'),
+    fetchAllProducts('installment'),
     api.getBanks('ru'),
   ])
-  for (const p of [...credits.data, ...deposits.data, ...installments.data]) {
+  for (const p of [...credits, ...deposits, ...installments]) {
     addNamed('product', { id: p.id })
   }
   for (const b of banks.data) {

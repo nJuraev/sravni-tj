@@ -44,9 +44,9 @@ export type ProductFeatures = Partial<Record<FeatureKey, boolean>>
 /** A single cell of the tariff grid: rate × term × amount × currency. */
 export interface RateTier {
   currency: Currency
-  amount_from: number
+  amount_from: number | null
   amount_to: number | null
-  term_from: number
+  term_from: number | null
   term_to: number | null
   rate: number
 }

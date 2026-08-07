@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile.rates.railway"
   },
   "deploy": {
-    "cronSchedule": "0 3-13 * * *",
+    "cronSchedule": "0 3-13/2 * * *",
     "restartPolicyType": "NEVER"
   }
 }

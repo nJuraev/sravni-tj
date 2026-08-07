@@ -26,14 +26,19 @@ function isHighlighted(tier: RateTier): boolean {
 }
 
 function amountRange(tier: RateTier): string {
+  if (tier.amount_from === null && tier.amount_to === null) return '—'
+  if (tier.amount_from === null) return `${t('common.to')} ${formatMoney(tier.amount_to!, tier.currency, loc.value)}`
   const from = formatMoney(tier.amount_from, tier.currency, loc.value)
   if (tier.amount_to === null) return `${t('common.from')} ${from}`
   return `${from} – ${formatMoney(tier.amount_to, tier.currency, loc.value)}`
 }
 
 function termRange(tier: RateTier): string {
-  if (tier.term_to === null) return `${t('common.from')} ${tier.term_from} ${t('common.months')}`
-  return `${formatNumber(tier.term_from, loc.value)}–${tier.term_to} ${t('common.months')}`
+  const unit = t('common.months')
+  if (tier.term_from === null && tier.term_to === null) return '—'
+  if (tier.term_from === null) return `${t('common.to')} ${tier.term_to} ${unit}`
+  if (tier.term_to === null) return `${t('common.from')} ${tier.term_from} ${unit}`
+  return `${formatNumber(tier.term_from, loc.value)}–${tier.term_to} ${unit}`
 }
 </script>
 

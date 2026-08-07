@@ -140,6 +140,12 @@ function toggleSubcategory(code: Subcategory) {
   } else {
     local.subcategory = [...local.subcategory, code]
   }
+  applyNow()
+}
+
+function onCurrencyChange(value: string) {
+  local.currency = value as '' | Currency
+  applyNow()
 }
 
 function buildQuery(): ProductQuery {
@@ -164,6 +170,25 @@ function buildQuery(): ProductQuery {
 function submit() {
   if (hasInvalid.value) return
   emit('apply', buildQuery())
+}
+
+// Сброс чистит и local (визуал), и query через emit — иначе несохранённые
+// (не применённые кнопкой "Применить") чипы/поля остаются "нажатыми".
+function resetAll() {
+  local.bank_id = []
+  local.subcategory = []
+  local.currency = ''
+  local.amount_min = ''
+  local.amount_max = ''
+  local.term_min = ''
+  local.term_max = ''
+  local.rate_min = ''
+  local.rate_max = ''
+  local.features = []
+  local.special = false
+  local.sort = DEFAULT_SORT
+  advancedOpen.value = false
+  emit('reset')
 }
 
 /** Применить немедленно (для «живых» контролов: банки, особые). */
@@ -200,12 +225,17 @@ watch(
   <form class="filters" novalidate @submit.prevent="submit">
     <div class="filters__top">
       <h2 class="filters__title">{{ t('filters.title') }}</h2>
-      <BaseButton type="button" variant="ghost" size="sm" @click="emit('reset')">
+      <BaseButton type="button" variant="ghost" size="sm" @click="resetAll">
         {{ t('common.reset') }}
       </BaseButton>
     </div>
 
-    <BaseSelect v-model="local.currency" :label="t('filters.currency')" :options="currencyOptions" />
+    <BaseSelect
+      :model-value="local.currency"
+      :label="t('filters.currency')"
+      :options="currencyOptions"
+      @update:model-value="onCurrencyChange"
+    />
 
     <fieldset v-if="subcategoryOptions.length" class="filters__group">
       <legend>{{ t('filters.subcategory') }}</legend>
