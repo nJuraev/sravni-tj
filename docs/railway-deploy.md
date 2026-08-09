@@ -224,14 +224,20 @@ Best-effort вызов — при сбое сети/backend прогон кур�
 1. **Генерация** (не раньше 04:00 UTC = 09:00 Душанбе, максимум раз в сутки — проверяется по `finance_posts.generated_at`): выбирает тему/продукт/курсы по дню недели (`PostTopicSelector::WEEKLY_PATTERN`), зовёт LLM (`LlmService`), создаёт `finance_posts` со случайным `send_at` (+1..90 минут). Если LLM в моменте недоступен — не критично, следующий тик (через 10 минут) повторит попытку в тот же день.
 2. **Отправка**: на каждом тике ищет `finance_posts` со `status=pending` и `send_at <= now()`, диспатчит `SendFinancePostJob::dispatch()` — под `QUEUE_CONNECTION=sync` (§2) выполняется тут же синхронно, тем же приёмом, что и `DispatchRateAlerts`. Фактическая задержка отправки = случайные 1–90 минут + до ~10 минут ожидания следующего тика.
 
-### Переменные окружения (добавить к backend, §2)
+### Переменные окружения
 
-```
-TELEGRAM_CHANNEL_ID=   # chat_id канала (бот должен быть в нём админом)
-AI_PROVIDER=openrouter # или deepseek — те же имена, что у parser (§5)
-AI_API_KEY=            # можно указать тот же ключ, что уже настроен у parser
-AI_MODEL=              # опционально; дефолт зависит от AI_PROVIDER (см. LlmService)
-```
+`telegram-posts` — тот же код, что backend (§2), поэтому нужен **весь тот же набор env**, что у сервиса backend (`DB_*`, `APP_KEY`, `TELEGRAM_BOT_TOKEN`, …), плюс три новых. Дублировать их вручную в двух сервисах — плохая идея (разъедутся при ротации ключа). Используйте **Project Settings → Shared Variables** (Railway) вместо копирования per-service:
+
+| Переменная | Кто использует | Почему shared |
+|---|---|---|
+| `APP_KEY` | backend, telegram-posts | один и тот же код/шифрование |
+| `TELEGRAM_BOT_TOKEN` | backend, telegram-posts | один бот |
+| `TELEGRAM_CHANNEL_ID` | telegram-posts (новая) | chat_id канала, бот должен быть там админом |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` | telegram-posts (новая), parser, parser-rates (§5) | один и тот же провайдер/ключ на все три сервиса |
+
+`DB_HOST`/`DB_PORT`/`DB_DATABASE`/`DB_USERNAME`/`DB_PASSWORD` — НЕ через Shared Variables, оставить как есть: живая ссылка `${{Postgres.PGHOST}}` и т.д. (§2) — это отдельный механизм Railway (service variable reference), он и так один на все сервисы, менять не нужно.
+
+Создать shared-переменные: Project → **Settings → Shared Variables** → добавить перечисленные выше. Затем в каждом сервисе (backend, telegram-posts, parser, parser-rates — где применимо) на вкладке Variables нажать **Add Reference** → выбрать нужную shared-переменную (или использовать `${{shared.VARIABLE_NAME}}` вручную в значении). Ротация ключа/токена — правите один раз в Shared Variables, подхватят все сервисы разом.
 
 ### Разовый шаг: сидер тем
 
@@ -254,7 +260,7 @@ php artisan db:seed --class=PostTopicSeeder --force
 5. Добавить сервис **parser**, Root = `parser`, задать env (включая `BROWSER_CDP_URL=http://chrome.railway.internal:9222`). Проверить, что Railway распознал cron.
 6. Добавить сервис **parser-rates**, Root = `parser`, Config-as-code Path = `railway.rates.json`, задать те же env. Проверить cron (`0 3-13 * * *` UTC).
 7. Открыть домен frontend → витрина; `/admin` → вход админки.
-8. Добавить сервис **telegram-posts**, Root = `backend`, Config-as-code Path = `railway.telegram-posts.json` (§8). Задать `TELEGRAM_CHANNEL_ID`, `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`. Разово выполнить сидер тем (`db:seed --class=PostTopicSeeder --force`).
+8. Завести **Shared Variables** на уровне проекта (§8): `APP_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`. Добавить сервис **telegram-posts**, Root = `backend`, Config-as-code Path = `railway.telegram-posts.json`, подключить нужные shared-переменные + `DB_*` (ссылка на Postgres, как у backend). Разово выполнить сидер тем (`db:seed --class=PostTopicSeeder --force`).
 
 ## Заметки
 
