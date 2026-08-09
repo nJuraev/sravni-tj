@@ -77,7 +77,7 @@ const { t, locale } = useI18n()
 }
 .rate-line {
   display: grid;
-  grid-template-columns: 52px 1fr auto;
+  grid-template-columns: 52px 1fr minmax(0, 160px);
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-5) 0;
@@ -101,16 +101,20 @@ const { t, locale } = useI18n()
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 2px;
+  text-align: center;
 }
 .rate-op__val {
   font-weight: 700;
   font-size: var(--fs-md);
+  text-align: center;
 }
 .rate-line__bank {
   font-size: var(--fs-xs);
   color: var(--color-text-secondary);
   font-weight: 700;
   text-align: right;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 @media (max-width: 520px) {

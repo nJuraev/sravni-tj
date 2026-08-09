@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             BankSeeder::class,
             BankSourceUrlSeeder::class,
             BankParseInstructionSeeder::class,
+            PostTopicSeeder::class,
         ]);
     }
 }

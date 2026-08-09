@@ -61,6 +61,7 @@ export function buildProductParams(query: ProductQuery): URLSearchParams {
   set('per_page', query.per_page)
   for (const f of query.features ?? []) params.append('features[]', f)
   for (const b of query.bank_id ?? []) params.append('bank_id[]', String(b))
+  for (const s of query.subcategory ?? []) params.append('subcategory[]', s)
   return params
 }
 

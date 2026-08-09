@@ -18,6 +18,7 @@ import {
 import {
   BusinessOutline,
   DocumentTextOutline,
+  PaperPlaneOutline,
   PeopleOutline,
   LogOutOutline,
   PersonCircleOutline,
@@ -39,6 +40,7 @@ const menuOptions = computed<MenuOption[]>(() => {
   const items: MenuOption[] = [
     { label: 'Банки', key: 'admin-banks', icon: renderIcon(BusinessOutline) },
     { label: 'Заявки', key: 'admin-leads', icon: renderIcon(DocumentTextOutline) },
+    { label: 'Финансовые посты', key: 'admin-finance-posts', icon: renderIcon(PaperPlaneOutline) },
   ]
   if (admin.isAdmin) {
     items.push({ label: 'Пользователи', key: 'admin-users', icon: renderIcon(PeopleOutline) })

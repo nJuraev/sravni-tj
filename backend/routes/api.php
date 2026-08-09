@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Admin\BankController as AdminBankController;
+use App\Http\Controllers\Admin\FinancePostController as AdminFinancePostController;
 use App\Http\Controllers\Admin\LeadController as AdminLeadController;
+use App\Http\Controllers\Admin\PostTopicController as AdminPostTopicController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\BankController;
@@ -105,5 +107,14 @@ Route::prefix('admin')->group(function (): void {
         Route::apiResource('users', AdminUserController::class)
             ->except('show')
             ->whereNumber('user');
+
+        // Ежедневные финансовые посты в Telegram-канал: темы (CRUD) + превью
+        // расписания на 7 дней + история сгенерированных/отправленных постов.
+        Route::get('post-topics/preview', [AdminPostTopicController::class, 'preview']);
+        Route::apiResource('post-topics', AdminPostTopicController::class)
+            ->except(['show'])
+            ->whereNumber('post_topic');
+        Route::get('finance-posts', [AdminFinancePostController::class, 'index']);
+        Route::post('finance-posts/from-source', [AdminFinancePostController::class, 'storeFromSource']);
     });
 });

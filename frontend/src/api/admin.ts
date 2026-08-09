@@ -2,12 +2,17 @@ import { ApiError } from './errors'
 import { API_BASE_URL } from './client'
 import type {
   AdminBank,
+  AdminFinancePost,
   AdminLead,
+  AdminPostTopic,
   AdminProduct,
   AdminUser,
   BankPayload,
   LoginResponse,
+  NewsPostPayload,
   Paginated,
+  PostTopicPayload,
+  PostTopicPreviewDay,
   ProductPayload,
   UserPayload,
 } from '@/types/admin'
@@ -151,5 +156,35 @@ export const adminApi = {
   },
   deleteUser(id: number): Promise<void> {
     return request<void>(`/users/${id}`, { method: 'DELETE' })
+  },
+
+  // Финансовые посты (ежедневные публикации в Telegram-канал)
+  listPostTopics(): Promise<CollectionResponse<AdminPostTopic>> {
+    return request<CollectionResponse<AdminPostTopic>>('/post-topics')
+  },
+  previewPostTopics(): Promise<{ data: PostTopicPreviewDay[] }> {
+    return request<{ data: PostTopicPreviewDay[] }>('/post-topics/preview')
+  },
+  createPostTopic(payload: PostTopicPayload): Promise<ItemResponse<AdminPostTopic>> {
+    return request<ItemResponse<AdminPostTopic>>('/post-topics', { method: 'POST', body: JSON.stringify(payload) })
+  },
+  updatePostTopic(id: number, payload: PostTopicPayload): Promise<ItemResponse<AdminPostTopic>> {
+    return request<ItemResponse<AdminPostTopic>>(`/post-topics/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+  },
+  deletePostTopic(id: number): Promise<void> {
+    return request<void>(`/post-topics/${id}`, { method: 'DELETE' })
+  },
+  listFinancePosts(params: { page?: number; per_page?: number } = {}): Promise<Paginated<AdminFinancePost>> {
+    const qs = new URLSearchParams()
+    if (params.page) qs.set('page', String(params.page))
+    if (params.per_page) qs.set('per_page', String(params.per_page))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<Paginated<AdminFinancePost>>(`/finance-posts${suffix}`)
+  },
+  createNewsPost(payload: NewsPostPayload): Promise<ItemResponse<AdminFinancePost>> {
+    return request<ItemResponse<AdminFinancePost>>('/finance-posts/from-source', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
   },
 }

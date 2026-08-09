@@ -140,3 +140,41 @@ export interface UserPayload {
   role: AdminRole
   is_active: boolean
 }
+
+export type FinancePostKind = 'generic' | 'product' | 'currency' | 'news'
+export type FinancePostStatus = 'pending' | 'sent' | 'failed'
+
+export interface AdminPostTopic {
+  id: number
+  title: string
+  prompt: string
+  is_active: boolean
+  last_used_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type PostTopicPayload = Pick<AdminPostTopic, 'title' | 'prompt' | 'is_active'>
+
+export interface PostTopicPreviewDay {
+  date: string
+  kind: FinancePostKind
+  topic_title: string | null
+}
+
+export interface NewsPostPayload {
+  source_title?: string
+  source_text: string
+}
+
+export interface AdminFinancePost {
+  id: number
+  kind: FinancePostKind
+  subject_label: string | null
+  body: string
+  status: FinancePostStatus
+  generated_at: string | null
+  send_at: string | null
+  sent_at: string | null
+  error: string | null
+}

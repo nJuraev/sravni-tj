@@ -1,6 +1,6 @@
 # Деплой Sravni.tj в Railway
 
-Монорепо разворачивается как **6 сервисов** в одном Railway-проекте:
+Монорепо разворачивается как **7 сервисов** в одном Railway-проекте:
 
 | Сервис | Root Directory | Builder | Назначение |
 |---|---|---|---|
@@ -10,6 +10,7 @@
 | **chrome** | — (Docker Image) | — | Свой headless-Chrome для scraper='browser', always-on |
 | **parser** | `parser` | Dockerfile (cron) | Go-парсер (discover+parser), раз в сутки |
 | **parser-rates** | `parser` | Dockerfile (cron) | Курсы валют, раз в час, 08:00–18:00 |
+| **telegram-posts** | `backend` | Dockerfile (cron) | Генерация + отправка ежедневного поста, раз в 10 минут |
 
 Каждый сервис конфигурируется своим `railway.json` (в корне его директории). В дашборде Railway у каждого сервиса задаётся **Root Directory** = соответствующая папка — тогда Railway найдёт нужный `railway.json`.
 
@@ -213,6 +214,37 @@ Best-effort вызов — при сбое сети/backend прогон кур�
 
 ---
 
+## 8. Ежедневные финансовые посты в Telegram-канал
+
+Один дополнительный cron-сервис **telegram-posts**, **тот же репозиторий и тот же Root Directory** — `backend` (как parser/parser-rates делят Root `parser`). Использует тот же [Dockerfile](../backend/Dockerfile), что и основной сервис backend, но переопределяет `startCommand` через свой [railway.telegram-posts.json](../backend/railway.telegram-posts.json) — пересобирать образ отдельно не нужно.
+
+При создании сервиса в дашборде Railway: Root Directory = `backend`, в **Settings → Config-as-code Path** указать `railway.telegram-posts.json` (иначе Railway возьмёт `backend/railway.json` основного сервиса).
+
+Запускает `php artisan posts:run-scheduler` каждые **10 минут, круглосуточно** (`cronSchedule: "*/10 * * * *"`, `restartPolicyType: NEVER`) — один процесс совмещает генерацию и отправку, отдельного воркера очереди не требуется:
+1. **Генерация** (не раньше 04:00 UTC = 09:00 Душанбе, максимум раз в сутки — проверяется по `finance_posts.generated_at`): выбирает тему/продукт/курсы по дню недели (`PostTopicSelector::WEEKLY_PATTERN`), зовёт LLM (`LlmService`), создаёт `finance_posts` со случайным `send_at` (+1..90 минут). Если LLM в моменте недоступен — не критично, следующий тик (через 10 минут) повторит попытку в тот же день.
+2. **Отправка**: на каждом тике ищет `finance_posts` со `status=pending` и `send_at <= now()`, диспатчит `SendFinancePostJob::dispatch()` — под `QUEUE_CONNECTION=sync` (§2) выполняется тут же синхронно, тем же приёмом, что и `DispatchRateAlerts`. Фактическая задержка отправки = случайные 1–90 минут + до ~10 минут ожидания следующего тика.
+
+### Переменные окружения (добавить к backend, §2)
+
+```
+TELEGRAM_CHANNEL_ID=   # chat_id канала (бот должен быть в нём админом)
+AI_PROVIDER=openrouter # или deepseek — те же имена, что у parser (§5)
+AI_API_KEY=            # можно указать тот же ключ, что уже настроен у parser
+AI_MODEL=              # опционально; дефолт зависит от AI_PROVIDER (см. LlmService)
+```
+
+### Разовый шаг: сидер тем
+
+После первого деплоя backend — через Railway shell (если ещё не сделано через `db:seed --force` из §2):
+
+```
+php artisan db:seed --class=PostTopicSeeder --force
+```
+
+Заводит ~18 стартовых generic-тем. Новые темы можно добавлять из `/admin` (раздел «Финансовые посты») — без деплоя.
+
+---
+
 ## Порядок деплоя
 
 1. Создать проект, добавить **PostgreSQL**.
@@ -222,6 +254,7 @@ Best-effort вызов — при сбое сети/backend прогон кур�
 5. Добавить сервис **parser**, Root = `parser`, задать env (включая `BROWSER_CDP_URL=http://chrome.railway.internal:9222`). Проверить, что Railway распознал cron.
 6. Добавить сервис **parser-rates**, Root = `parser`, Config-as-code Path = `railway.rates.json`, задать те же env. Проверить cron (`0 3-13 * * *` UTC).
 7. Открыть домен frontend → витрина; `/admin` → вход админки.
+8. Добавить сервис **telegram-posts**, Root = `backend`, Config-as-code Path = `railway.telegram-posts.json` (§8). Задать `TELEGRAM_CHANNEL_ID`, `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`. Разово выполнить сидер тем (`db:seed --class=PostTopicSeeder --force`).
 
 ## Заметки
 

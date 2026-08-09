@@ -39,9 +39,18 @@ return [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'bot_username' => env('TELEGRAM_BOT_USERNAME'),
         'channel_invite_link' => env('TELEGRAM_CHANNEL_INVITE_LINK'),
+        'channel_id' => env('TELEGRAM_CHANNEL_ID'),
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
         'rates_webhook_secret' => env('TELEGRAM_RATES_WEBHOOK_SECRET'),
         'frontend_url' => env('FRONTEND_URL', 'https://sravni.tj'),
+    ],
+
+    // Те же имена переменных, что у Go-парсера (parser/internal/config) —
+    // значение ключа можно переиспользовать между сервисами.
+    'ai' => [
+        'provider' => env('AI_PROVIDER', 'openrouter'),
+        'api_key' => env('AI_API_KEY'),
+        'model' => env('AI_MODEL'),
     ],
 
 ];
