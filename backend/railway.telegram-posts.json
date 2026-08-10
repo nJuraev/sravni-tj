@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "php artisan posts:run-scheduler",
-    "cronSchedule": "*/10 * * * *",
+    "cronSchedule": "*/10 3-17 * * *",
     "restartPolicyType": "NEVER"
   }
 }

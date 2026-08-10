@@ -116,7 +116,13 @@ export interface LoginResponse {
 
 export type BankPayload = Omit<
   AdminBank,
-  'id' | 'products_count' | 'leads_count' | 'created_at' | 'updated_at'
+  | 'id'
+  | 'products_count'
+  | 'leads_count'
+  | 'products_updated_at'
+  | 'rates_updated_at'
+  | 'created_at'
+  | 'updated_at'
 >
 
 export type ProductPayload = Omit<
