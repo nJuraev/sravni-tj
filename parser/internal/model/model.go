@@ -54,15 +54,21 @@ type LangURLRule struct {
 type RateRuleItem struct {
 	Currency string `json:"currency"`
 	Category string `json:"category"` // cash | transfer
-	BuyPath  string `json:"buy_path"`  // путь (resolvePath) в JSON-ответе; "" — не читать buy
+	URL      string `json:"url"`      // "" — GET in.StartURL (общий случай); задан — свой URL для этого item (банк отдаёт категории разными эндпоинтами/query-параметрами, а kind=rates допускает только одну строку instruction на банк — см. chk_bpi_category)
+	BuyPath  string `json:"buy_path"` // путь (resolvePath) в JSON-ответе; "" — не читать buy
 	SellPath string `json:"sell_path"` // путь (resolvePath); "" — не читать sell
 }
 
 // RateRule — конфиг детерминированного (без AI) извлечения курсов
 // (bank_parse_instructions.rate_rule). nil — используется старый AI-путь.
 type RateRule struct {
-	Format string         `json:"format"` // сейчас поддержан только "json_path" (см. rates/deterministic.go resolvePath)
-	Items  []RateRuleItem `json:"items"`
+	Format string `json:"format"` // "json_path" (тело ответа — готовый JSON) | "html_json" (JSON-блок внутри HTML, см. JSONMarker)
+	// JSONMarker — только для Format="html_json": подстрока сразу ПЕРЕД
+	// нужным JSON-блоком, последний символ — открывающая скобка блока
+	// ('[' или '{'), напр. `"currency":[`. См. rates/deterministic.go
+	// extractJSONBlock.
+	JSONMarker string         `json:"json_marker,omitempty"`
+	Items      []RateRuleItem `json:"items"`
 }
 
 // DiscoveryInstruction — инструкция discovery-парсера (bank_parse_instructions,

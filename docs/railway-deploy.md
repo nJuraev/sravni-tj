@@ -160,7 +160,7 @@ PARSER_CONCURRENCY=3
 
 ### Переменные окружения parser-rates
 
-Те же, что у `parser` (`DATABASE_URL`, `SCRAPER_API_KEY`, `BROWSER_CDP_URL`, `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `PARSER_DEBUG_LOG`) — `rates` использует тот же скрейпер/AI-конфиг. `PARSER_CONCURRENCY` не используется (`rates` обходит банки последовательно).
+Те же, что у `parser` (`DATABASE_URL`, `SCRAPER_API_KEY`, `BROWSER_CDP_URL`, `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `PARSER_DEBUG_LOG`), плюс `PARSER_CONCURRENCY` — `rates` использует тот же семафор-механизм, что и `parser` (горутина на инструкцию, см. `internal/rates/rates.go`). Без переменной дефолт `1` — банки обходятся строго последовательно. На проде большинство банков — детерминированный JSON (без AI/browser, доли секунды), но несколько всё ещё идут через AI-путь или `scraper='browser'` (общий контейнер `chrome`) — при `Concurrency=1` их время суммируется, отсюда прогон дольше 5 минут. Ставьте **5–10**: выше почти нет смысла — упрётесь либо в rate-limit AI-провайдера, либо в память/CPU одного `chrome`-контейнера, а не в число горутин.
 
 ---
 

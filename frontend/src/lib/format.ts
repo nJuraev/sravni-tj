@@ -44,3 +44,25 @@ export function formatRateRangeValue(min: number, max: number, locale: Locale): 
   if (min === max) return formatNumber(min, locale, 2)
   return `${formatNumber(min, locale, 2)}–${formatNumber(max, locale, 2)}`
 }
+
+export interface FreshnessTag {
+  label: string
+  type: 'success' | 'warning' | 'error'
+}
+
+/**
+ * Тон + подпись для метки "когда парсер последний раз успешно обновил X"
+ * (banks.products_updated_at / rates_updated_at, админка). staleDays —
+ * порог, после которого метка ещё "warning", а не "error": для курсов
+ * (часовой крон) 1 день, для продуктов (суточный крон) 3 дня.
+ */
+export function pipelineFreshness(iso: string | null, staleDays: number): FreshnessTag {
+  if (!iso) return { label: 'никогда', type: 'error' }
+
+  const ageMs = Date.now() - new Date(iso).getTime()
+  const ageDays = ageMs / (24 * 60 * 60 * 1000)
+
+  if (ageDays <= 1) return { label: 'сегодня', type: 'success' }
+  if (ageDays <= staleDays) return { label: `${Math.floor(ageDays)} дн. назад`, type: 'warning' }
+  return { label: `${Math.floor(ageDays)} дн. назад`, type: 'error' }
+}

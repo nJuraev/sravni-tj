@@ -483,5 +483,21 @@ func (s *PG) TouchSourceParsed(ctx context.Context, sourceURLID int64, at time.T
 	return nil
 }
 
+func (s *PG) TouchBankProductsUpdated(ctx context.Context, bankID int64, at time.Time) error {
+	const q = `UPDATE banks SET products_updated_at = $2, updated_at = now() WHERE id = $1`
+	if _, err := s.pool.Exec(ctx, q, bankID, at); err != nil {
+		return fmt.Errorf("store: touch products_updated_at: %w", err)
+	}
+	return nil
+}
+
+func (s *PG) TouchBankRatesUpdated(ctx context.Context, bankID int64, at time.Time) error {
+	const q = `UPDATE banks SET rates_updated_at = $2, updated_at = now() WHERE id = $1`
+	if _, err := s.pool.Exec(ctx, q, bankID, at); err != nil {
+		return fmt.Errorf("store: touch rates_updated_at: %w", err)
+	}
+	return nil
+}
+
 // Гарантия на этапе компиляции, что PG реализует Store.
 var _ Store = (*PG)(nil)

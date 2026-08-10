@@ -32,6 +32,10 @@ export interface AdminBank {
   logo_url: string | null
   products_count?: number
   leads_count?: number
+  // Когда парсер последний раз УСПЕШНО (>0 записанных строк) обновил
+  // продукты/курсы этого банка; null — ни разу.
+  products_updated_at: string | null
+  rates_updated_at: string | null
   created_at: string | null
   updated_at: string | null
 }

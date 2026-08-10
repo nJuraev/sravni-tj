@@ -209,6 +209,9 @@ func (p *Parser) finishPipeline(ctx context.Context, task model.SourceTask, star
 	if err := p.st.TouchSourceParsed(ctx, task.ID, startedAt); err != nil {
 		p.log.Warn("не удалось обновить last_parsed_at", "task_id", task.ID, "err", err)
 	}
+	if err := p.st.TouchBankProductsUpdated(ctx, task.BankID, startedAt); err != nil {
+		p.log.Warn("не удалось обновить products_updated_at", "task_id", task.ID, "err", err)
+	}
 
 	status := store.RunSuccess
 	if anyRejected {

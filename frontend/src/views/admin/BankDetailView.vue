@@ -9,6 +9,7 @@ import {
 import { AddOutline, ArrowBackOutline } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
+import { pipelineFreshness } from '@/lib/format'
 import type { AdminBank, AdminProduct, BankPayload, FeatureKey, ProductPayload } from '@/types/admin'
 
 const props = defineProps<{ id: number }>()
@@ -269,6 +270,22 @@ const columns: DataTableColumns<AdminProduct> = [
             <n-descriptions-item label="Телефон">{{ bank?.phone ?? '—' }}</n-descriptions-item>
             <n-descriptions-item label="Адрес" :span="2">{{ bank?.address_ru ?? '—' }}</n-descriptions-item>
             <n-descriptions-item label="Заявок">{{ bank?.leads_count ?? 0 }}</n-descriptions-item>
+            <n-descriptions-item label="Продукты обновлены">
+              <n-space align="center" :size="8">
+                <span>{{ formatDate(bank?.products_updated_at) }}</span>
+                <n-tag size="small" :type="pipelineFreshness(bank?.products_updated_at ?? null, 3).type" :bordered="false">
+                  {{ pipelineFreshness(bank?.products_updated_at ?? null, 3).label }}
+                </n-tag>
+              </n-space>
+            </n-descriptions-item>
+            <n-descriptions-item label="Курсы обновлены">
+              <n-space align="center" :size="8">
+                <span>{{ formatDate(bank?.rates_updated_at) }}</span>
+                <n-tag size="small" :type="pipelineFreshness(bank?.rates_updated_at ?? null, 1).type" :bordered="false">
+                  {{ pipelineFreshness(bank?.rates_updated_at ?? null, 1).label }}
+                </n-tag>
+              </n-space>
+            </n-descriptions-item>
           </n-descriptions>
         </n-card>
       </n-tab-pane>

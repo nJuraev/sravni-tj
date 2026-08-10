@@ -16,8 +16,12 @@ use Illuminate\Support\Facades\DB;
 /**
  * Курсы валют банков (только чтение). Отдаются только курсы АКТИВНЫХ банков.
  *
- * Везде берётся САМЫЙ СВЕЖИЙ курс на сочетание банк×валюта×категория
- * (DISTINCT ON + ORDER BY rate_date DESC), т.к. банки публикуют посуточно.
+ * Берётся курс на сочетание банк×валюта×категория с rate_date = СЕГОДНЯ.
+ * Если у банка сегодня курс не спарсился (упавший парсер и т.п.) — банк
+ * просто не попадает в ответ, а не отдаётся его старый курс как актуальный
+ * (раньше DISTINCT ON без ограничения по дате брал самый свежий из ЛЮБЫХ,
+ * даже месячной давности — молча показывая стейл-данные, см. banks.rates_updated_at
+ * в админке для диагностики, когда курс банка обновлялся последний раз).
  */
 class RateController extends Controller
 {
@@ -64,7 +68,7 @@ class RateController extends Controller
     }
 
     /**
-     * Базовый запрос: свежайший курс на банк×валюта×категория, только активные банки.
+     * Базовый запрос: курс на банк×валюта×категория за СЕГОДНЯ, только активные банки.
      *
      * @return Builder<BankCurrencyRate>
      */
@@ -72,6 +76,7 @@ class RateController extends Controller
     {
         return BankCurrencyRate::query()
             ->select(DB::raw('DISTINCT ON (bank_id, currency, category) bank_currency_rates.*'))
+            ->where('rate_date', now()->toDateString())
             ->whereHas('bank', fn (Builder $b) => $b->where('status', 'active'))
             ->orderBy('bank_id')
             ->orderBy('currency')

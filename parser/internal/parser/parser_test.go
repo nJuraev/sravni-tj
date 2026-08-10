@@ -65,7 +65,7 @@ func (m *mockStore) DiscoveryInstructions(ctx context.Context) ([]model.Discover
 	return nil, nil
 }
 
-func (m *mockStore) UpsertSourceURL(ctx context.Context, bankID int64, category model.Category, url string) (bool, error) {
+func (m *mockStore) UpsertSourceURL(ctx context.Context, bankID int64, category model.Category, url string, scraper string) (bool, error) {
 	return false, nil
 }
 
@@ -78,6 +78,14 @@ func (m *mockStore) RatesInstructions(ctx context.Context) ([]model.DiscoveryIns
 }
 
 func (m *mockStore) UpsertRate(ctx context.Context, rw store.RateWrite) error {
+	return nil
+}
+
+func (m *mockStore) TouchBankProductsUpdated(ctx context.Context, bankID int64, at time.Time) error {
+	return nil
+}
+
+func (m *mockStore) TouchBankRatesUpdated(ctx context.Context, bankID int64, at time.Time) error {
 	return nil
 }
 

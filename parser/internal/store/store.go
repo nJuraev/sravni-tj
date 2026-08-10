@@ -105,6 +105,15 @@ type Store interface {
 	// TouchSourceParsed обновляет bank_source_urls.last_parsed_at при успехе.
 	TouchSourceParsed(ctx context.Context, sourceURLID int64, at time.Time) error
 
+	// TouchBankProductsUpdated обновляет banks.products_updated_at — только
+	// при УСПЕШНОМ прогоне (>0 upserted), не при каждом запуске (в отличие
+	// от TouchInstruction/TouchSourceParsed выше).
+	TouchBankProductsUpdated(ctx context.Context, bankID int64, at time.Time) error
+
+	// TouchBankRatesUpdated обновляет banks.rates_updated_at — только при
+	// УСПЕШНОМ прогоне (>0 сохранённых курсов).
+	TouchBankRatesUpdated(ctx context.Context, bankID int64, at time.Time) error
+
 	// Close освобождает пул соединений.
 	Close()
 }

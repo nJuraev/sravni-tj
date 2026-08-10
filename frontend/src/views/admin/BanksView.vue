@@ -8,6 +8,7 @@ import {
 import { AddOutline, SearchOutline } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
+import { pipelineFreshness } from '@/lib/format'
 import type { AdminBank, BankPayload } from '@/types/admin'
 
 const router = useRouter()
@@ -127,6 +128,20 @@ const columns: DataTableColumns<AdminBank> = [
   },
   { title: 'Продукты', key: 'products_count', width: 100, render: (b) => b.products_count ?? 0 },
   { title: 'Заявки', key: 'leads_count', width: 90, render: (b) => b.leads_count ?? 0 },
+  {
+    title: 'Продукты обновл.', key: 'products_updated_at', width: 140,
+    render: (b) => {
+      const f = pipelineFreshness(b.products_updated_at, 3)
+      return h(NTag, { size: 'small', type: f.type, bordered: false }, () => f.label)
+    },
+  },
+  {
+    title: 'Курсы обновл.', key: 'rates_updated_at', width: 140,
+    render: (b) => {
+      const f = pipelineFreshness(b.rates_updated_at, 1)
+      return h(NTag, { size: 'small', type: f.type, bordered: false }, () => f.label)
+    },
+  },
   {
     title: '', key: 'actions', width: 300, align: 'right',
     render: (b) => h(NSpace, { justify: 'end', size: 8 }, () => [

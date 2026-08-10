@@ -187,6 +187,11 @@ func (r *Rater) saveRates(ctx context.Context, in model.DiscoveryInstruction, st
 	if err := r.st.TouchInstruction(ctx, in.ID, startedAt); err != nil {
 		r.log.Warn("rates: touch last_run_at не удался", "instruction_id", in.ID, "err", err)
 	}
+	if saved > 0 {
+		if err := r.st.TouchBankRatesUpdated(ctx, in.BankID, startedAt); err != nil {
+			r.log.Warn("rates: touch rates_updated_at не удался", "instruction_id", in.ID, "err", err)
+		}
+	}
 
 	r.log.Info("инструкция курсов обработана",
 		"instruction_id", in.ID, "bank_id", in.BankID, "saved", saved, "skipped", skipped)

@@ -39,6 +39,11 @@ class AdminBankResource extends JsonResource
             // Счётчики (присутствуют, если загружены через withCount).
             'products_count' => $this->whenCounted('products'),
             'leads_count' => $this->whenCounted('leads'),
+            // Когда парсер последний раз УСПЕШНО (>0 записанных строк) обновил
+            // продукты/курсы этого банка — null, если ни разу. См. banks.products_updated_at/
+            // rates_updated_at (проставляются Go-парсером, не при каждом запуске).
+            'products_updated_at' => optional($this->products_updated_at)->toIso8601ZuluString(),
+            'rates_updated_at' => optional($this->rates_updated_at)->toIso8601ZuluString(),
             'created_at' => optional($this->created_at)->toIso8601ZuluString(),
             'updated_at' => optional($this->updated_at)->toIso8601ZuluString(),
         ];

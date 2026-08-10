@@ -81,12 +81,39 @@ class BankParseInstructionSeeder extends Seeder
             'notes' => 'Это страница самого депозитного продукта (поддомен). Извлеки продукт прямо со страницы, искать ссылки не нужно.',
         ],
         [
+            // Раньше AI-путь по блоку «kurspublish container» на главной.
+            // Оказалось: cash («В кассе») в статике ГЛАВНОЙ не рендерится
+            // вообще — грузится клиентским fetch по клику на таб (raw HTML
+            // содержит только дефолтный таб «Переводы», см. inline <script>
+            // на странице). Реальный источник обеих категорий — общий
+            // плоский JSON-эндпоинт, различается только query-параметром
+            // type. Проверено curl:
+            //   ?type=transfer → {"rates":[{"code":"USD","buy":"9.1800","sell":"9.2700"},...]}
+            //   ?type=cash     → buy/sell чуть другие (курс кассы ≠ курс перевода)
+            // chk_bpi_category требует category IS NULL для kind=rates (одна
+            // строка instruction на банк) — cash/transfer не развести по
+            // строкам, поэтому per-item 'url' (см. model.RateRuleItem):
+            // items без url читают in.StartURL (transfer), items с url —
+            // свой (cash). rate_rule — источник истины.
             'bank' => 'Душанбе Сити',
             'kind' => 'rates',
             'category' => null,
-            'start_url' => 'https://dc.tj/',
+            'start_url' => 'https://dc.tj/kurs_nbt_tab.php?type=transfer',
             'menu_sections' => null,
-            'notes' => 'Курсы в блоке с классом «kurspublish container». Раздели на cash (наличные) и transfer (переводы), buy/sell. Игнор юрлиц, золота, курса НБТ.',
+            'notes' => 'JSON: {"rates":[{"code","name","buy","sell"},...]}. Фильтр по code. transfer = таб «Переводы» (start_url), cash = таб «В кассе» (rate_rule.items[].url = ?type=cash).',
+            'rate_rule' => [
+                'format' => 'json_path',
+                'items' => [
+                    ['currency' => 'USD', 'category' => 'transfer', 'buy_path' => 'rates[code=USD].buy', 'sell_path' => 'rates[code=USD].sell'],
+                    ['currency' => 'EUR', 'category' => 'transfer', 'buy_path' => 'rates[code=EUR].buy', 'sell_path' => 'rates[code=EUR].sell'],
+                    ['currency' => 'RUB', 'category' => 'transfer', 'buy_path' => 'rates[code=RUB].buy', 'sell_path' => 'rates[code=RUB].sell'],
+                    ['currency' => 'CNY', 'category' => 'transfer', 'buy_path' => 'rates[code=CNY].buy', 'sell_path' => 'rates[code=CNY].sell'],
+                    ['currency' => 'USD', 'category' => 'cash', 'url' => 'https://dc.tj/kurs_nbt_tab.php?type=cash', 'buy_path' => 'rates[code=USD].buy', 'sell_path' => 'rates[code=USD].sell'],
+                    ['currency' => 'EUR', 'category' => 'cash', 'url' => 'https://dc.tj/kurs_nbt_tab.php?type=cash', 'buy_path' => 'rates[code=EUR].buy', 'sell_path' => 'rates[code=EUR].sell'],
+                    ['currency' => 'RUB', 'category' => 'cash', 'url' => 'https://dc.tj/kurs_nbt_tab.php?type=cash', 'buy_path' => 'rates[code=RUB].buy', 'sell_path' => 'rates[code=RUB].sell'],
+                    ['currency' => 'CNY', 'category' => 'cash', 'url' => 'https://dc.tj/kurs_nbt_tab.php?type=cash', 'buy_path' => 'rates[code=CNY].buy', 'sell_path' => 'rates[code=CNY].sell'],
+                ],
+            ],
         ],
 
         // --- Спитамен Банк (spitamenbank.tj) ---
@@ -158,17 +185,36 @@ class BankParseInstructionSeeder extends Seeder
             'notes' => 'Страница-КАТАЛОГ депозитов. Карточки со ссылками на детальные страницы вкладов. Собери ссылки и парси детальные страницы. Только физлица.',
         ],
         [
-            // Next.js SPA: значения buy/sell в разметке ПУСТЫЕ (currenciesList
-            // содержит только id/label/иконку) — курсы дозагружаются клиентским
-            // JS уже после рендера. Direct (статичный GET) их не видит вообще —
-            // нужен полноценный JS-рендер.
+            // Раньше AI-путь с JS-рендером (Next.js SPA, курсы в разметке
+            // пустые, дозагружаются клиентским JS) — платный Firecrawl на
+            // каждый прогон. Найден прямой JSON API, отдаёт всё одним GET,
+            // без рендера. {"localRates":[{...},...],"crossRates":[...]}.
+            // Проверено curl: localRates — 18 валют, фильтр по "name".
+            // buyValue/sellValue = касса (cash). moneyTransferBuyValue/
+            // moneyTransferTradeValue = перевод (transfer) — sell-поле
+            // называется "TradeValue", не "SellValue" (несогласованность
+            // самого API). nonCashBuyValue/nonCashSellValue (по карте) и
+            // visaBuy/walletBuy — игнор (нет такой category в нашей схеме).
+            // nbtValue — курс НБТ, игнор. crossRates не используем.
             'bank' => 'Алиф',
             'kind' => 'rates',
             'category' => null,
-            'start_url' => 'https://alif.tj/ru/',
+            'start_url' => 'https://alif.tj/api/rates',
             'menu_sections' => null,
-            'notes' => 'Курсы валют на странице — НЕ по классу (классы не уникальны). Найди по СОДЕРЖИМОМУ: таблица/блок с валютами (USD, EUR, RUB) и парами курсов покупка/продажа. cash, buy/sell. Игнор курса НБТ.',
-            'scraper' => 'browser',
+            'notes' => 'JSON: {"localRates":[{"name","buyValue","sellValue","moneyTransferBuyValue","moneyTransferTradeValue",...}]}. Фильтр по name. cash=buyValue/sellValue, transfer=moneyTransferBuyValue/moneyTransferTradeValue. rate_rule — источник истины.',
+            'rate_rule' => [
+                'format' => 'json_path',
+                'items' => [
+                    ['currency' => 'USD', 'category' => 'cash', 'buy_path' => 'localRates[name=USD].buyValue', 'sell_path' => 'localRates[name=USD].sellValue'],
+                    ['currency' => 'EUR', 'category' => 'cash', 'buy_path' => 'localRates[name=EUR].buyValue', 'sell_path' => 'localRates[name=EUR].sellValue'],
+                    ['currency' => 'RUB', 'category' => 'cash', 'buy_path' => 'localRates[name=RUB].buyValue', 'sell_path' => 'localRates[name=RUB].sellValue'],
+                    ['currency' => 'CNY', 'category' => 'cash', 'buy_path' => 'localRates[name=CNY].buyValue', 'sell_path' => 'localRates[name=CNY].sellValue'],
+                    ['currency' => 'USD', 'category' => 'transfer', 'buy_path' => 'localRates[name=USD].moneyTransferBuyValue', 'sell_path' => 'localRates[name=USD].moneyTransferTradeValue'],
+                    ['currency' => 'EUR', 'category' => 'transfer', 'buy_path' => 'localRates[name=EUR].moneyTransferBuyValue', 'sell_path' => 'localRates[name=EUR].moneyTransferTradeValue'],
+                    ['currency' => 'RUB', 'category' => 'transfer', 'buy_path' => 'localRates[name=RUB].moneyTransferBuyValue', 'sell_path' => 'localRates[name=RUB].moneyTransferTradeValue'],
+                    ['currency' => 'CNY', 'category' => 'transfer', 'buy_path' => 'localRates[name=CNY].moneyTransferBuyValue', 'sell_path' => 'localRates[name=CNY].moneyTransferTradeValue'],
+                ],
+            ],
         ],
 
         // --- Амонатбанк (amonatbonk.tj) ---
@@ -485,9 +531,28 @@ class BankParseInstructionSeeder extends Seeder
             'notes' => 'Каталог → /ru/deposit/<slug>.',
         ],
         [
+            // Раньше AI-путь ("server-rendered таблица") — сайт переехал на
+            // Next.js, реального рынка "cash" на странице больше НЕТ, только
+            // один таб «Переводы» (transfer). Числа лежат внутри HTML как
+            // RSC flight-стрим — Next.js сериализует вложенный контент как
+            // JSON-СТРОКУ внутри JSON (кавычки экранированы буквально,
+            // `\"currency\":[...]` прямо в байтах ответа). html_json это
+            // умеет (см. model.RateRule, rates/deterministic.go) — снимает
+            // escape сам, без ручной пометки формата. Маркер уникален
+            // (проверено — одно совпадение на странице).
+            // Проверено curl+браузер: buy/sell — числа (не строки), 3 валюты.
             'bank' => 'Хумо', 'kind' => 'rates', 'category' => null,
             'start_url' => 'https://www.humo.tj/ru/', 'menu_sections' => null,
-            'notes' => 'Таблица «Курс валют» на главной (server-rendered), Покупка/Продажа USD/EUR/RUB. cash.',
+            'notes' => 'JSON внутри HTML (RSC): [{"type":"Переводы","currencyRates":[{"currency","buy","sell"},...]}]. Только transfer, cash больше нет. rate_rule — источник истины.',
+            'rate_rule' => [
+                'format' => 'html_json',
+                'json_marker' => '\"currency\":[',
+                'items' => [
+                    ['currency' => 'USD', 'category' => 'transfer', 'buy_path' => '[type=Переводы].currencyRates[currency=USD].buy', 'sell_path' => '[type=Переводы].currencyRates[currency=USD].sell'],
+                    ['currency' => 'EUR', 'category' => 'transfer', 'buy_path' => '[type=Переводы].currencyRates[currency=EUR].buy', 'sell_path' => '[type=Переводы].currencyRates[currency=EUR].sell'],
+                    ['currency' => 'RUB', 'category' => 'transfer', 'buy_path' => '[type=Переводы].currencyRates[currency=RUB].buy', 'sell_path' => '[type=Переводы].currencyRates[currency=RUB].sell'],
+                ],
+            ],
         ],
 
         // --- Васл Бонк (vasl.tj) — платёжный банк: кредитов/вкладов НЕТ, только курсы ---

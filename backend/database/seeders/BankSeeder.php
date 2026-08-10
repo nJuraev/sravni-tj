@@ -70,7 +70,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, р. Фирдавси, ул. Сохили 5',
                 'address_tg' => null,
                 'contact_email' => 'info1@dc.tj',
-                // dc.tj недоступен из парсера/CI (таймаут) — иконку не смогли снять с сайта.
+                'logo_url' => '/bank-logos/dushanbe-city.ico',
             ],
             [
                 'slug' => 'spitamen',
@@ -117,6 +117,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, проспект Рудаки, 105',
                 'address_tg' => null,
                 'contact_email' => 'info@amonatbonk.tj',
+                'logo_url' => '/bank-logos/amonatbank.ico',
                 // Слаги подтверждённо 1:1 совпадают между /ru/ и /tj/ (проверено
                 // на 3 детальных страницах кредитов).
                 'lang_url_rule_type' => 'path_replace',
@@ -159,6 +160,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, ул. С. Айни 4/1',
                 'address_tg' => null,
                 'contact_email' => 'info@tawhidbank.tj',
+                'logo_url' => '/bank-logos/tawhidbank.ico',
             ],
             [
                 'slug' => 'icb',
@@ -169,6 +171,7 @@ class BankSeeder extends Seeder
                 'address_ru' => 'г. Душанбе, район И. Сомони, ул. Пушкина 10',
                 'address_tg' => null,
                 'contact_email' => 'info@icb.tj',
+                'logo_url' => '/bank-logos/icb.png',
                 // JSON API (icb.tj:8384) — язык ТОЛЬКО через заголовок запроса
                 // Accept-Language, значения строго нижним регистром: "ru"/"tj".
                 // Любое другое значение (RU, en, tg, ru-RU...) фолбэкает на

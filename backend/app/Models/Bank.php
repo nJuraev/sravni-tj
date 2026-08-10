@@ -28,6 +28,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $logo_url
  * @property string|null $lang_url_rule_type Правило вывода tj-URL из ru-URL для парсера (query_param|path_replace); см. Go model.LangURLRule
  * @property array|null $lang_url_rule_params
+ * @property \Illuminate\Support\Carbon|null $products_updated_at Когда парсер последний раз успешно (>0 upserted) обновил продукты банка
+ * @property \Illuminate\Support\Carbon|null $rates_updated_at Когда парсер последний раз успешно (>0 сохранённых) обновил курсы валют банка
  */
 class Bank extends Model
 {
@@ -46,6 +48,8 @@ class Bank extends Model
         'is_partner' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'products_updated_at' => 'datetime',
+        'rates_updated_at' => 'datetime',
     ];
 
     /** @return HasMany<BankSourceUrl, $this> */
