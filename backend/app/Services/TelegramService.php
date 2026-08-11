@@ -16,9 +16,15 @@ class TelegramService
 {
     /**
      * @param  array<string, mixed>|null  $replyMarkup  reply_markup (inline/reply keyboard)
+     * @param  string|null  $parseMode  'HTML' — для сообщений с разметкой (напр. <pre> таблица курсов)
      */
-    public function sendMessage(int $chatId, string $text, ?array $replyMarkup = null, bool $disableWebPagePreview = true): bool
-    {
+    public function sendMessage(
+        int $chatId,
+        string $text,
+        ?array $replyMarkup = null,
+        bool $disableWebPagePreview = true,
+        ?string $parseMode = null,
+    ): bool {
         $token = config('services.telegram.bot_token');
 
         if (empty($token)) {
@@ -35,6 +41,10 @@ class TelegramService
 
         if ($replyMarkup !== null) {
             $payload['reply_markup'] = $replyMarkup;
+        }
+
+        if ($parseMode !== null) {
+            $payload['parse_mode'] = $parseMode;
         }
 
         try {

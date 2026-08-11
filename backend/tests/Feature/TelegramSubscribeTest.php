@@ -80,7 +80,7 @@ class TelegramSubscribeTest extends TestCase
 
         // Два сообщения: подтверждение с меню + мягкий инвайт в канал.
         Http::assertSentCount(2);
-        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'Уведомления'));
+        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'Готово!'));
         Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'https://t.me/sravni_channel'));
     }
 
@@ -112,16 +112,18 @@ class TelegramSubscribeTest extends TestCase
         ], ['X-Telegram-Bot-Api-Secret-Token' => 'test-secret']);
     }
 
-    public function test_rates_button_returns_best_rate_and_site_link(): void
+    public function test_rates_button_returns_rate_table_and_site_link(): void
     {
-        $bank = Bank::factory()->create(['name_ru' => 'Банк Эсхата']);
+        $bank = Bank::factory()->create();
         BankCurrencyRate::factory()->for($bank, 'bank')->create([
             'currency' => 'USD', 'category' => 'cash', 'buy' => 11.5, 'sell' => 11.8,
         ]);
 
         $this->postButton('💱 Курс валют')->assertNoContent();
 
-        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'Банк Эсхата')
+        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'USD')
+            && str_contains($request['text'] ?? '', '<pre>')
+            && ($request['parse_mode'] ?? null) === 'HTML'
             && str_contains(json_encode($request->data()), '/kurs-valyut'));
     }
 
@@ -131,7 +133,7 @@ class TelegramSubscribeTest extends TestCase
         $bank = Bank::factory()->create();
         BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'USD', 'category' => 'cash']);
 
-        $this->postButton('⚙️ Уведомления', 606)->assertNoContent();
+        $this->postButton('⚙️ Настроить уведомления', 606)->assertNoContent();
 
         Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'валюту')
             && str_contains(json_encode($request->data()), 'aw:c:USD'));
@@ -140,7 +142,7 @@ class TelegramSubscribeTest extends TestCase
 
     public function test_alerts_button_prompts_signup_for_unknown_user(): void
     {
-        $this->postButton('⚙️ Уведомления', 999)->assertNoContent();
+        $this->postButton('⚙️ Настроить уведомления', 999)->assertNoContent();
 
         Http::assertSent(fn ($request) => str_contains(json_encode($request->data()), '/kurs-valyut'));
     }
@@ -150,6 +152,29 @@ class TelegramSubscribeTest extends TestCase
         $this->postButton('🏦 Подобрать кредит')->assertNoContent();
 
         Http::assertSent(fn ($request) => str_contains(json_encode($request->data()), '/credit'));
+    }
+
+    public function test_profile_button_returns_profile_link_for_registered_user(): void
+    {
+        User::factory()->telegram()->create(['telegram_id' => 607, 'api_token' => 'tok-607']);
+
+        $this->postButton('👤 Профиль', 607)->assertNoContent();
+
+        Http::assertSent(fn ($request) => str_contains(json_encode($request->data()), '/profile?token=tok-607'));
+    }
+
+    public function test_profile_button_prompts_signup_for_unknown_user(): void
+    {
+        $this->postButton('👤 Профиль', 998)->assertNoContent();
+
+        Http::assertSent(fn ($request) => str_contains(json_encode($request->data()), '/kurs-valyut'));
+    }
+
+    public function test_unrecognized_text_sends_greeting_pointing_to_alerts_button(): void
+    {
+        $this->postButton('привет', 610)->assertNoContent();
+
+        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'Настроить уведомления'));
     }
 
     public function test_start_with_unknown_token_does_not_create_user(): void

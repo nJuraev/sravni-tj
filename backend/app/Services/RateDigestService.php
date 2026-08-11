@@ -114,30 +114,36 @@ class RateDigestService
     }
 
     /**
-     * Текст сводки для бота: лучший наличный курс по USD и EUR.
+     * Текст сводки для бота: лучший наличный курс по всем реально котируемым
+     * валютам (не хардкод — см. availableCurrencies), в виде моноширинной
+     * HTML-таблицы (<pre>) — читаемо на телефоне, без разброса по банкам
+     * (полный список банков — по кнопке "Все курсы на сайте").
+     * Отправлять с parse_mode='HTML' (TelegramService::sendMessage).
      */
     public function botCashSummary(): string
     {
-        $lines = ['💱 Лучший курс наличных сейчас:'];
+        $currencies = $this->availableCurrencies('cash');
 
-        foreach (self::BOT_CURRENCIES as $currency) {
-            $rows = $this->latestRates('cash', $currency);
-            $sell = $this->extreme($rows, 'sell', 'min');
-            $buy = $this->extreme($rows, 'buy', 'max');
-
-            $lines[] = '';
-            $lines[] = $currency;
-
-            if ($sell['value'] === null && $buy['value'] === null) {
-                $lines[] = '  нет данных';
-
-                continue;
-            }
-
-            $lines[] = '  Банк продаёт: '.$this->formatSide($sell);
-            $lines[] = '  Банк покупает: '.$this->formatSide($buy);
+        if ($currencies === []) {
+            return 'Сейчас нет данных по курсам.';
         }
 
-        return implode("\n", $lines);
+        // Заголовки — с точки зрения банка (как на сайте): банк продаёт клиенту / банк покупает у клиента.
+        $rows = [sprintf('%-6s %9s %9s', 'Валюта', 'Продаёт', 'Покупает')];
+
+        foreach ($currencies as $currency) {
+            $data = $this->latestRates('cash', $currency);
+            $sell = $this->extreme($data, 'sell', 'min')['value'];
+            $buy = $this->extreme($data, 'buy', 'max')['value'];
+
+            $rows[] = sprintf(
+                '%-6s %9s %9s',
+                $currency,
+                $sell !== null ? $this->formatNumber($sell) : '—',
+                $buy !== null ? $this->formatNumber($buy) : '—',
+            );
+        }
+
+        return "💱 <b>Курс наличных сегодня</b>\n<pre>".implode("\n", $rows).'</pre>';
     }
 }

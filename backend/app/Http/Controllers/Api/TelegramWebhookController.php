@@ -34,9 +34,10 @@ use Illuminate\Support\Str;
 class TelegramWebhookController extends Controller
 {
     private const BTN_RATES = '💱 Курс валют';
-    private const BTN_ALERTS = '⚙️ Уведомления';
+    private const BTN_ALERTS = '⚙️ Настроить уведомления';
     private const BTN_CREDIT = '🏦 Подобрать кредит';
     private const BTN_DEPOSIT = '💰 Подобрать депозит';
+    private const BTN_PROFILE = '👤 Профиль';
 
     /** Мастер настройки алерта живёт в Cache — Telegram-боты без состояния между запросами. */
     private const WIZARD_TTL_MINUTES = 10;
@@ -83,6 +84,7 @@ class TelegramWebhookController extends Controller
             self::BTN_ALERTS => $this->startAlertWizard($telegram, $digest, (int) $chatId, $telegramId),
             self::BTN_CREDIT => $this->sendCatalog($telegram, (int) $chatId, 'credit'),
             self::BTN_DEPOSIT => $this->sendCatalog($telegram, (int) $chatId, 'deposit'),
+            self::BTN_PROFILE => $this->sendProfileLink($telegram, (int) $chatId, $telegramId),
             default => $this->sendGreeting($telegram, (int) $chatId),
         };
 
@@ -146,6 +148,36 @@ class TelegramWebhookController extends Controller
             $chatId,
             $digest->botCashSummary(),
             $this->linkButton('Все курсы на сайте', $this->frontend('/kurs-valyut')),
+            true,
+            'HTML',
+        );
+    }
+
+    private function sendProfileLink(TelegramService $telegram, int $chatId, ?int $telegramId): void
+    {
+        $user = $telegramId !== null
+            ? User::query()->where('telegram_id', $telegramId)->first()
+            : null;
+
+        if ($user === null || empty($user->api_token)) {
+            $this->sendNotSubscribedPrompt($telegram, $chatId);
+
+            return;
+        }
+
+        $telegram->sendMessage(
+            $chatId,
+            'Ваш профиль на сайте — имя, телефон и список уведомлений:',
+            $this->linkButton('Открыть профиль', $this->profileUrl($user)),
+        );
+    }
+
+    private function sendNotSubscribedPrompt(TelegramService $telegram, int $chatId): void
+    {
+        $telegram->sendMessage(
+            $chatId,
+            'Похоже, вы ещё не подписаны. Оформите подписку на уведомления на сайте:',
+            $this->linkButton('Открыть курсы', $this->frontend('/kurs-valyut')),
         );
     }
 
@@ -162,8 +194,8 @@ class TelegramWebhookController extends Controller
     {
         $telegram->sendMessage(
             $chatId,
-            "Sravni.tj — сравнение банковских продуктов Таджикистана.\n"
-            .'Выберите действие в меню ниже.',
+            "Sravni.tj — курсы валют и подбор банковских продуктов.\n\n"
+            .'Жми «'.self::BTN_ALERTS.'» и выбери валюты, курс которых тебе интересен.',
             $this->menuKeyboard(),
         );
     }
@@ -179,11 +211,7 @@ class TelegramWebhookController extends Controller
             : null;
 
         if ($user === null || empty($user->api_token)) {
-            $telegram->sendMessage(
-                $chatId,
-                'Похоже, вы ещё не подписаны. Оформите подписку на уведомления на сайте:',
-                $this->linkButton('Открыть курсы', $this->frontend('/kurs-valyut')),
-            );
+            $this->sendNotSubscribedPrompt($telegram, $chatId);
 
             return;
         }
@@ -395,6 +423,7 @@ class TelegramWebhookController extends Controller
             'keyboard' => [
                 [['text' => self::BTN_RATES], ['text' => self::BTN_ALERTS]],
                 [['text' => self::BTN_CREDIT], ['text' => self::BTN_DEPOSIT]],
+                [['text' => self::BTN_PROFILE]],
             ],
             'resize_keyboard' => true,
         ];

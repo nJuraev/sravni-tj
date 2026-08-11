@@ -16,7 +16,7 @@ use Tests\TestCase;
 
 /**
  * Feature-тесты мастера настройки алерта прямо в Telegram-чате (без сайта):
- * ⚙️ Уведомления → callback валюта → callback купить/продать → текст порога.
+ * ⚙️ Настроить уведомления → callback валюта → callback купить/продать → текст порога.
  */
 class TelegramAlertWizardTest extends TestCase
 {
@@ -68,7 +68,7 @@ class TelegramAlertWizardTest extends TestCase
         $this->seedUsdCashRate(buy: 11.0, sell: 11.2);
         $user = User::factory()->telegram()->create(['telegram_id' => 700]);
 
-        $this->postMessage('⚙️ Уведомления', 700)->assertNoContent();
+        $this->postMessage('⚙️ Настроить уведомления', 700)->assertNoContent();
         $this->assertSame(['step' => 'currency'], Cache::get('alert_wizard:700'));
 
         $this->postCallback('aw:c:USD', 700)->assertNoContent();
@@ -102,7 +102,7 @@ class TelegramAlertWizardTest extends TestCase
         $this->seedUsdCashRate();
         User::factory()->telegram()->create(['telegram_id' => 701]);
 
-        $this->postMessage('⚙️ Уведомления', 701)->assertNoContent();
+        $this->postMessage('⚙️ Настроить уведомления', 701)->assertNoContent();
         $this->postCallback('aw:c:USD', 701)->assertNoContent();
         $this->postCallback('aw:i:sell', 701)->assertNoContent();
 
@@ -117,7 +117,7 @@ class TelegramAlertWizardTest extends TestCase
         $this->seedUsdCashRate(buy: 11.0, sell: 11.2);
         User::factory()->telegram()->create(['telegram_id' => 702]);
 
-        $this->postMessage('⚙️ Уведомления', 702)->assertNoContent();
+        $this->postMessage('⚙️ Настроить уведомления', 702)->assertNoContent();
         $this->postCallback('aw:c:USD', 702)->assertNoContent();
         $this->postCallback('aw:i:buy', 702)->assertNoContent();
 
@@ -134,7 +134,7 @@ class TelegramAlertWizardTest extends TestCase
         $this->seedUsdCashRate();
         User::factory()->telegram()->create(['telegram_id' => 703]);
 
-        $this->postMessage('⚙️ Уведомления', 703)->assertNoContent();
+        $this->postMessage('⚙️ Настроить уведомления', 703)->assertNoContent();
         $this->postCallback('aw:c:USD', 703)->assertNoContent();
         $this->postCallback('aw:i:buy', 703)->assertNoContent();
 
@@ -152,7 +152,7 @@ class TelegramAlertWizardTest extends TestCase
             RateAlertSubscription::factory()->for($user)->create(['category' => 'cash', 'direction' => 'above', ...$attrs]);
         }
 
-        $this->postMessage('⚙️ Уведомления', 704)->assertNoContent();
+        $this->postMessage('⚙️ Настроить уведомления', 704)->assertNoContent();
 
         $this->assertNull(Cache::get('alert_wizard:704'));
         Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'максимум'));
@@ -160,7 +160,7 @@ class TelegramAlertWizardTest extends TestCase
 
     public function test_unknown_user_is_prompted_to_subscribe_instead_of_starting_wizard(): void
     {
-        $this->postMessage('⚙️ Уведомления', 999)->assertNoContent();
+        $this->postMessage('⚙️ Настроить уведомления', 999)->assertNoContent();
 
         $this->assertNull(Cache::get('alert_wizard:999'));
         Http::assertSent(fn ($request) => str_contains(json_encode($request->data()), '/kurs-valyut'));
@@ -185,7 +185,7 @@ class TelegramAlertWizardTest extends TestCase
             'category' => 'cash', 'currency' => 'USD', 'op' => 'sell', 'direction' => 'below', 'threshold' => 10,
         ]);
 
-        $this->postMessage('⚙️ Уведомления', 706)->assertNoContent();
+        $this->postMessage('⚙️ Настроить уведомления', 706)->assertNoContent();
         $this->postCallback('aw:c:USD', 706)->assertNoContent();
         $this->postCallback('aw:i:buy', 706)->assertNoContent();
         $this->postMessage('10.5', 706)->assertNoContent();
