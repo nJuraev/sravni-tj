@@ -9,6 +9,7 @@ use App\Http\Requests\StoreRateAlertRequest;
 use App\Http\Resources\RateAlertResource;
 use App\Models\RateAlertSubscription;
 use App\Models\User;
+use App\Services\RateAlertSubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -36,12 +37,12 @@ class RateAlertController extends Controller
     /**
      * POST /api/profile/alerts.
      */
-    public function store(StoreRateAlertRequest $request): JsonResponse
+    public function store(StoreRateAlertRequest $request, RateAlertSubscriptionService $alerts): JsonResponse
     {
         /** @var User $user */
         $user = $request->user('user');
 
-        $alert = $user->rateAlertSubscriptions()->create($request->validated());
+        $alert = $alerts->create($user, $request->validated());
 
         return response()->json(['data' => new RateAlertResource($alert)], Response::HTTP_CREATED);
     }

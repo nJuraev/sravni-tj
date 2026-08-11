@@ -408,6 +408,39 @@ class ProductCatalogTest extends TestCase
         $this->assertEquals(3.0, $usdVariant['rate_min']);
     }
 
+    public function test_show_dedupes_duplicate_rows_per_currency_within_group(): void
+    {
+        // Реальный кейс с прода: парсер может создать несколько строк products
+        // на одну и ту же валюту в рамках одной группы (source_url_id) —
+        // таб должен быть один на валюту, а не по одному на каждую строку.
+        $bank = Bank::factory()->create();
+        $sourceUrl = BankSourceUrl::factory()->for($bank, 'bank')->create();
+
+        $tjs = Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'TJS', 'parsed_at' => now()->subDay()]);
+        Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'TJS', 'parsed_at' => now()->subDays(2)]);
+        Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'USD', 'parsed_at' => now()->subDays(3)]);
+        $usdFresh = Product::factory()->for($bank, 'bank')->for($sourceUrl, 'sourceUrl')
+            ->credit()->create(['currency' => 'USD', 'parsed_at' => now()]);
+
+        $response = $this->getJson('/api/products/'.$tjs->id)
+            ->assertOk()
+            ->assertJsonCount(2, 'data.variants');
+
+        $currencies = array_column($response->json('data.variants'), 'currency');
+        sort($currencies);
+        $this->assertSame(['TJS', 'USD'], $currencies);
+
+        // Сам запрошенный продукт остаётся собой (не заменяется другой TJS-строкой);
+        // для валюты, которую не запрашивали (USD) — самая свежая по parsed_at строка.
+        $tjsVariant = collect($response->json('data.variants'))->firstWhere('currency', 'TJS');
+        $usdVariant = collect($response->json('data.variants'))->firstWhere('currency', 'USD');
+        $this->assertSame((int) $tjs->id, $tjsVariant['id']);
+        $this->assertSame((int) $usdFresh->id, $usdVariant['id']);
+    }
+
     public function test_show_without_source_url_has_single_variant_no_currencies_key(): void
     {
         $bank = Bank::factory()->create();

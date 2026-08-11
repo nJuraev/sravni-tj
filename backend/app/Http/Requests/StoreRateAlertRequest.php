@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
-use App\Models\RateAlertSubscription;
+use App\Services\RateAlertSubscriptionService;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -30,17 +30,18 @@ class StoreRateAlertRequest extends FormRequest
                 'required',
                 'string',
                 'regex:/^[A-Za-z]{3}$/',
-                // Не дублировать один и тот же алерт для одного пользователя.
+                // Не дублировать один и тот же алерт для одного пользователя
+                // (правило общее с ботом — см. RateAlertSubscriptionService).
                 function (string $attribute, mixed $value, Closure $fail): void {
-                    $exists = RateAlertSubscription::query()
-                        ->where('user_id', $this->user('user')->id)
-                        ->where('category', $this->input('category'))
-                        ->where('currency', $value)
-                        ->where('op', $this->input('op'))
-                        ->where('direction', $this->input('direction'))
-                        ->exists();
+                    $isDuplicate = app(RateAlertSubscriptionService::class)->isDuplicate(
+                        $this->user('user'),
+                        (string) $this->input('category'),
+                        $value,
+                        (string) $this->input('op'),
+                        (string) $this->input('direction'),
+                    );
 
-                    if ($exists) {
+                    if ($isDuplicate) {
                         $fail('validation.rate_alert_duplicate')->translate();
                     }
                 },
@@ -48,15 +49,11 @@ class StoreRateAlertRequest extends FormRequest
         ];
     }
 
-    /** Не больше 3 активных алертов на пользователя. */
+    /** Не больше 3 активных алертов на пользователя (правило общее с ботом). */
     public function withValidator(\Illuminate\Validation\Validator $validator): void
     {
         $validator->after(function (\Illuminate\Validation\Validator $validator): void {
-            $count = RateAlertSubscription::query()
-                ->where('user_id', $this->user('user')->id)
-                ->count();
-
-            if ($count >= 3) {
+            if (app(RateAlertSubscriptionService::class)->hasReachedLimit($this->user('user'))) {
                 $validator->errors()->add('threshold', __('validation.rate_alert_limit'));
             }
         });

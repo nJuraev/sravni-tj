@@ -49,6 +49,24 @@ class RateDigestService
     }
 
     /**
+     * Валюты, реально котируемые активными банками по категории (сортировка
+     * алфавитная) — источник опций для мастера настройки алерта в боте, не
+     * хардкод (в реальных данных, помимо BOT_CURRENCIES, есть и RUB).
+     *
+     * @return array<int, string>
+     */
+    public function availableCurrencies(string $category): array
+    {
+        return BankCurrencyRate::query()
+            ->whereHas('bank', fn (Builder $b) => $b->where('status', 'active'))
+            ->where('category', $category)
+            ->distinct()
+            ->orderBy('currency')
+            ->pluck('currency')
+            ->all();
+    }
+
+    /**
      * Экстремум (max/min) по стороне side + все банки, котирующие этот курс.
      *
      * @param  Collection<int, array{bank: string, buy: float|null, sell: float|null}>  $rows

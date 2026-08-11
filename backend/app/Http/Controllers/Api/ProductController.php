@@ -92,7 +92,17 @@ class ProductController extends Controller
             $query->where('id', $model->id);
         }
 
-        return $query->get();
+        $rows = $query->get();
+
+        // Данные парсера могут содержать несколько строк products на одну и ту
+        // же валюту в рамках группы (source_url_id) — таб должен быть один на
+        // валюту. Сам запрошенный продукт остаётся собой; для остальных валют —
+        // самая свежая по parsed_at строка.
+        return $rows
+            ->groupBy('currency')
+            ->map(fn (Collection $group) => $group->first(fn (Product $p) => $p->id === $model->id)
+                ?? $group->sortByDesc(fn (Product $p) => $p->parsed_at)->first())
+            ->values();
     }
 
     /**

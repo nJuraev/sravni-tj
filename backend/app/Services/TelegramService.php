@@ -62,4 +62,36 @@ class TelegramService
             return false;
         }
     }
+
+    /**
+     * Обязателен после тапа на inline-кнопку — иначе у пользователя кнопка
+     * "крутится" (Telegram ждёт ack), даже если текст всплывающей подсказки
+     * не нужен.
+     */
+    public function answerCallbackQuery(string $callbackQueryId, ?string $text = null): bool
+    {
+        $token = config('services.telegram.bot_token');
+
+        if (empty($token)) {
+            return false;
+        }
+
+        try {
+            $response = Http::asJson()
+                ->timeout(5)
+                ->post("https://api.telegram.org/bot{$token}/answerCallbackQuery", array_filter([
+                    'callback_query_id' => $callbackQueryId,
+                    'text' => $text,
+                ]));
+
+            return $response->successful();
+        } catch (\Throwable $e) {
+            Log::error('Telegram answerCallbackQuery threw an exception.', [
+                'callback_query_id' => $callbackQueryId,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
 }

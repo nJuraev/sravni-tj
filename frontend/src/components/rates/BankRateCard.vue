@@ -231,10 +231,12 @@ function bankInitial(b: Bank): string {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 700;
+  text-align: center;
 }
 .rate-row__val {
   font-weight: 700;
   font-size: var(--fs-md);
+  text-align: center;
 }
 .bankrates__toggle {
   display: block;

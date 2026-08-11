@@ -78,9 +78,9 @@ class TelegramSubscribeTest extends TestCase
         $this->assertNotEmpty($user->api_token);
         $this->assertFalse(Cache::has('telegram_subscribe:tok123'));
 
-        // Два сообщения: настройка уведомлений (профиль) + мягкий инвайт в канал.
+        // Два сообщения: подтверждение с меню + мягкий инвайт в канал.
         Http::assertSentCount(2);
-        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', "/profile?token={$user->api_token}"));
+        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'Уведомления'));
         Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'https://t.me/sravni_channel'));
     }
 
@@ -125,13 +125,17 @@ class TelegramSubscribeTest extends TestCase
             && str_contains(json_encode($request->data()), '/kurs-valyut'));
     }
 
-    public function test_alerts_button_returns_profile_link_for_registered_user(): void
+    public function test_alerts_button_starts_currency_wizard_for_registered_user(): void
     {
-        $user = User::factory()->telegram()->create(['telegram_id' => 606, 'api_token' => 'tok-606']);
+        User::factory()->telegram()->create(['telegram_id' => 606, 'api_token' => 'tok-606']);
+        $bank = Bank::factory()->create();
+        BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'USD', 'category' => 'cash']);
 
         $this->postButton('⚙️ Уведомления', 606)->assertNoContent();
 
-        Http::assertSent(fn ($request) => str_contains(json_encode($request->data()), '/profile?token=tok-606'));
+        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'валюту')
+            && str_contains(json_encode($request->data()), 'aw:c:USD'));
+        $this->assertSame(['step' => 'currency'], Cache::get('alert_wizard:606'));
     }
 
     public function test_alerts_button_prompts_signup_for_unknown_user(): void
