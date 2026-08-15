@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -320,6 +321,17 @@ func toProductSources(products []model.ParsedProduct, url string) []productSourc
 // (защита от взрывного роста AI-вызовов и от мусорных ссылок).
 const maxDetailPages = 40
 
+// reMarkdownLink матчит markdown-ссылку [текст](url), см. linkify в direct.go.
+var reMarkdownLink = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
+
+// stripLinkSyntax убирает markdown-разметку ссылок, оставляя только текст.
+// Применяется ТОЛЬКО там, где режим страницы заранее известен как "детальная
+// страница продукта" (см. вызов в gatherFromLinks) — на страницах-каталогах
+// ссылки нужны AI для product_links, там эту функцию звать нельзя.
+func stripLinkSyntax(md string) string {
+	return reMarkdownLink.ReplaceAllString(md, "$1")
+}
+
 // detailJob — резолвленная детальная ссылка, готовая к скрейпу+извлечению.
 type detailJob struct {
 	url     string
@@ -391,6 +403,11 @@ func (p *Parser) gatherFromLinks(ctx context.Context, task model.SourceTask, lin
 				p.log.Warn("index: scrape детали не удался", "task_id", task.ID, "url", j.url, "err", err)
 				return
 			}
+			// Это точно страница конкретного продукта (детальная ссылка уже
+			// резолвлена из index-режима, рекурсии нет — см. коммент ниже про
+			// product_links деталей). Ссылки меню здесь AI не нужны вообще —
+			// снимаем markdown-синтаксис, экономим токены и убираем шум.
+			markdown = stripLinkSyntax(markdown)
 			// Гибрид-подсказка: подмешиваем заголовок раздела меню в начало markdown,
 			// чтобы AI точнее определил подкатегорию.
 			if j.section != nil {

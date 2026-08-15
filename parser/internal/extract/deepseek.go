@@ -106,9 +106,55 @@ func (d *DeepSeek) chat(ctx context.Context, systemMsg, userMsg string) (string,
 	return parsed.Choices[0].Message.Content, nil
 }
 
+// stripSchemaDescriptions убирает поле "description" из JSON Schema —
+// смысл каждого поля уже расписан прозой в systemPrompt/ratesSystemPrompt
+// (см. схема.go: описания там почти буквально повторяют правила выше),
+// повторять его текстом для DeepSeek — чистый лишний токен на каждый вызов.
+// Оставляем только структуру: type/required/enum/properties/items — то,
+// чего в прозе нет (напр. что rate_tiers[] — объект {term_min,term_max,
+// amount_min,amount_max,rate}).
+func stripSchemaDescriptions(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, vv := range t {
+			if k == "description" {
+				continue
+			}
+			out[k] = stripSchemaDescriptions(vv)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, vv := range t {
+			out[i] = stripSchemaDescriptions(vv)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// schemaPromptText сериализует JSON Schema как компактный текст для
+// DeepSeek — единственный провайдер без strict json_schema (см. коммент
+// у DeepSeek выше): схему модель иначе не видит совсем, только упоминания
+// имён полей в прозе правил — подтверждено на проде: rate=0 у Арванда
+// (interest_rate="31% - 32%" без схемы rate_tiers модель не поняла, куда
+// класть текстовый диапазон).
+func schemaPromptText(schema map[string]any) string {
+	b, _ := json.Marshal(stripSchemaDescriptions(schema))
+	return "\n\nСтрого следуй этой JSON Schema (draft 2020-12) для формы ответа:\n" + string(b)
+}
+
+// Схема статична — считаем текст один раз при старте, не на каждый вызов.
+var (
+	productSchemaText = schemaPromptText(responseSchema())
+	ratesSchemaText   = schemaPromptText(ratesSchema())
+)
+
 // Extract реализует AIExtractor (продукты).
 func (d *DeepSeek) Extract(ctx context.Context, markdown string, category model.Category) (*Extraction, error) {
-	rawText, err := d.chat(ctx, systemPrompt, userPrompt(markdown, category))
+	rawText, err := d.chat(ctx, systemPrompt+productSchemaText, userPrompt(markdown, category))
 	if err != nil {
 		return nil, fmt.Errorf("deepseek: %w", err)
 	}
@@ -121,7 +167,7 @@ func (d *DeepSeek) Extract(ctx context.Context, markdown string, category model.
 
 // ExtractRates реализует RatesExtractor (курсы).
 func (d *DeepSeek) ExtractRates(ctx context.Context, markdown, notes string) (*RatesExtraction, error) {
-	rawText, err := d.chat(ctx, ratesSystemPrompt, ratesUserPrompt(markdown, notes))
+	rawText, err := d.chat(ctx, ratesSystemPrompt+ratesSchemaText, ratesUserPrompt(markdown, notes))
 	if err != nil {
 		return nil, fmt.Errorf("deepseek: %w", err)
 	}

@@ -24,6 +24,9 @@ class RateDigestService
     /** Валюты, показываемые в сводке бота (TJS — базовая, без курса). */
     public const BOT_CURRENCIES = ['USD', 'EUR'];
 
+    /** Валюты, которые интересуют большинство — показываются в боте сразу, без "Другие валюты". */
+    public const MAIN_CURRENCIES = ['USD', 'EUR', 'RUB'];
+
     /**
      * Последний курс каждого активного банка по category×currency
      * (одна строка на банк — самая свежая по rate_date), с именем банка.
@@ -108,31 +111,83 @@ class RateDigestService
         return $this->formatNumber($side['value']).$banks;
     }
 
+    /**
+     * Как formatSide(), но число выделено <b> (HTML) — для сообщений бота
+     * с parse_mode='HTML'. Имя банка экранируется (untrusted для HTML-разметки).
+     *
+     * @param  array{value: float|null, banks: array<int, string>}  $side
+     */
+    public function formatSideHtml(array $side): string
+    {
+        if ($side['value'] === null) {
+            return '—';
+        }
+
+        $banks = $side['banks'] === []
+            ? ''
+            : ' — '.implode(', ', array_map('htmlspecialchars', $side['banks']));
+
+        return '<b>'.$this->formatNumber($side['value']).'</b>'.$banks;
+    }
+
     public function formatNumber(float $value): string
     {
         return rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
     }
 
-    /**
-     * Текст сводки для бота: лучший наличный курс по всем реально котируемым
-     * валютам (не хардкод — см. availableCurrencies), в виде моноширинной
-     * HTML-таблицы (<pre>) — читаемо на телефоне, без разброса по банкам
-     * (полный список банков — по кнопке "Все курсы на сайте").
-     * Отправлять с parse_mode='HTML' (TelegramService::sendMessage).
-     */
-    public function botCashSummary(): string
+    public function categoryLabel(string $category): string
     {
-        $currencies = $this->availableCurrencies('cash');
+        return $category === 'cash' ? 'Обмен валют' : 'Денежные переводы';
+    }
 
-        if ($currencies === []) {
+    /**
+     * Сводка для бота по заданным валютам (обычно MAIN_CURRENCIES) — с
+     * названиями банков, HTML-разметкой (числа <b>), парой строк на валюту.
+     * Отправлять с parse_mode='HTML' (TelegramService::sendMessage).
+     *
+     * @param  array<int, string>  $currencies
+     */
+    public function botRateSummary(string $category, array $currencies): string
+    {
+        $blocks = [];
+
+        foreach ($currencies as $currency) {
+            $rows = $this->latestRates($category, $currency);
+            $sell = $this->extreme($rows, 'sell', 'min');
+            $buy = $this->extreme($rows, 'buy', 'max');
+
+            if ($sell['value'] === null && $buy['value'] === null) {
+                continue;
+            }
+
+            $blocks[] = "<b>{$currency}</b>\n"
+                .'  Банк продаёт: '.$this->formatSideHtml($sell)."\n"
+                .'  Банк покупает: '.$this->formatSideHtml($buy);
+        }
+
+        if ($blocks === []) {
             return 'Сейчас нет данных по курсам.';
         }
 
-        // Заголовки — с точки зрения банка (как на сайте): банк продаёт клиенту / банк покупает у клиента.
+        return '💱 <b>'.$this->categoryLabel($category)." — курс сегодня</b>\n\n".implode("\n\n", $blocks);
+    }
+
+    /**
+     * Компактная таблица (без банков) по валютам, не входящим в MAIN_CURRENCIES —
+     * по кнопке "Другие валюты" в боте. Отправлять с parse_mode='HTML'.
+     */
+    public function botOtherCurrenciesTable(string $category): string
+    {
+        $currencies = array_values(array_diff($this->availableCurrencies($category), self::MAIN_CURRENCIES));
+
+        if ($currencies === []) {
+            return 'Других валют сейчас нет.';
+        }
+
         $rows = [sprintf('%-6s %9s %9s', 'Валюта', 'Продаёт', 'Покупает')];
 
         foreach ($currencies as $currency) {
-            $data = $this->latestRates('cash', $currency);
+            $data = $this->latestRates($category, $currency);
             $sell = $this->extreme($data, 'sell', 'min')['value'];
             $buy = $this->extreme($data, 'buy', 'max')['value'];
 
@@ -144,6 +199,6 @@ class RateDigestService
             );
         }
 
-        return "💱 <b>Курс наличных сегодня</b>\n<pre>".implode("\n", $rows).'</pre>';
+        return '<pre>'.implode("\n", $rows).'</pre>';
     }
 }

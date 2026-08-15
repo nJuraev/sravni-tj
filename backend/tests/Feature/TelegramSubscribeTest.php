@@ -112,19 +112,66 @@ class TelegramSubscribeTest extends TestCase
         ], ['X-Telegram-Bot-Api-Secret-Token' => 'test-secret']);
     }
 
-    public function test_rates_button_returns_rate_table_and_site_link(): void
+    private function postCallback(string $data, int $telegramId): \Illuminate\Testing\TestResponse
     {
-        $bank = Bank::factory()->create();
+        return $this->postJson('/api/telegram/webhook', [
+            'callback_query' => [
+                'id' => 'cbq-1',
+                'data' => $data,
+                'from' => ['id' => $telegramId],
+                'message' => ['chat' => ['id' => $telegramId]],
+            ],
+        ], ['X-Telegram-Bot-Api-Secret-Token' => 'test-secret']);
+    }
+
+    public function test_rates_button_returns_main_currencies_with_bank_names(): void
+    {
+        $bank = Bank::factory()->create(['name_ru' => 'Банк Эсхата']);
         BankCurrencyRate::factory()->for($bank, 'bank')->create([
             'currency' => 'USD', 'category' => 'cash', 'buy' => 11.5, 'sell' => 11.8,
+        ]);
+        BankCurrencyRate::factory()->for($bank, 'bank')->create([
+            'currency' => 'AED', 'category' => 'cash', 'buy' => 3.0, 'sell' => 3.1,
         ]);
 
         $this->postButton('💱 Курс валют')->assertNoContent();
 
-        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'USD')
-            && str_contains($request['text'] ?? '', '<pre>')
-            && ($request['parse_mode'] ?? null) === 'HTML'
-            && str_contains(json_encode($request->data()), '/kurs-valyut'));
+        Http::assertSent(function ($request) {
+            $text = $request['text'] ?? '';
+            $json = json_encode($request->data());
+
+            return str_contains($text, 'USD')
+                && str_contains($text, 'Банк Эсхата')
+                && ! str_contains($text, 'AED') // AED не в MAIN_CURRENCIES — не должен попасть в основной вид
+                && ($request['parse_mode'] ?? null) === 'HTML'
+                && str_contains($json, 'rt:more:cash')
+                && str_contains($json, 'rt:cat:transfer')
+                && str_contains($json, '/kurs-valyut');
+        });
+    }
+
+    public function test_other_currencies_callback_shows_compact_table_without_main_currencies(): void
+    {
+        $bank = Bank::factory()->create();
+        BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'USD', 'category' => 'cash', 'buy' => 11.5, 'sell' => 11.8]);
+        BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'AED', 'category' => 'cash', 'buy' => 3.0, 'sell' => 3.1]);
+
+        $this->postCallback('rt:more:cash', 611)->assertNoContent();
+
+        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'AED')
+            && ! str_contains($request['text'] ?? '', 'USD')
+            && str_contains($request['text'] ?? '', '<pre>'));
+    }
+
+    public function test_category_switch_callback_shows_transfer_rates(): void
+    {
+        $bank = Bank::factory()->create();
+        BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'USD', 'category' => 'transfer', 'buy' => 11.5, 'sell' => 11.8]);
+
+        $this->postCallback('rt:cat:transfer', 612)->assertNoContent();
+
+        Http::assertSent(fn ($request) => str_contains($request['text'] ?? '', 'Денежные переводы')
+            && str_contains($request['text'] ?? '', 'USD'));
     }
 
     public function test_alerts_button_starts_currency_wizard_for_registered_user(): void

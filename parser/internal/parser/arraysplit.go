@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"sravni/parser/internal/extract"
@@ -156,10 +157,29 @@ func extractArray(raw, arrayPath string) ([]any, error) {
 	return arr, nil
 }
 
+// stripEnglishFields убирает ключи с суффиксом "_en" — у банка (Арванд)
+// каждое поле отдаётся сразу в 4 вариантах (база/_ru/_tg/_en), но у нас
+// только ru/tg (§ "Мультиязычность" в CLAUDE.md), схема ответа _en вообще
+// не знает — чистый лишний токен на каждый AI-вызов.
+func stripEnglishFields(v any) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	out := make(map[string]any, len(m))
+	for k, val := range m {
+		if strings.HasSuffix(k, "_en") {
+			continue
+		}
+		out[k] = val
+	}
+	return out
+}
+
 // elementText — текст ОДНОГО элемента для AI: сам элемент как JSON, плюс
 // смёрдженная tj-пара (по id), если она нашлась в tjByID.
 func elementText(elem any, tjByID map[string]any) string {
-	ruJSON, _ := json.Marshal(elem)
+	ruJSON, _ := json.Marshal(stripEnglishFields(elem))
 	if tjByID == nil {
 		return string(ruJSON)
 	}
@@ -175,6 +195,6 @@ func elementText(elem any, tjByID map[string]any) string {
 	if !found {
 		return string(ruJSON)
 	}
-	tjJSON, _ := json.Marshal(tjElem)
+	tjJSON, _ := json.Marshal(stripEnglishFields(tjElem))
 	return mergeBilingual(string(ruJSON), string(tjJSON))
 }

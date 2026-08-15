@@ -144,10 +144,38 @@ class TelegramWebhookController extends Controller
 
     private function sendRates(TelegramService $telegram, RateDigestService $digest, int $chatId): void
     {
+        $this->sendRateCategory($telegram, $digest, $chatId, 'cash');
+    }
+
+    /** Основной вид: MAIN_CURRENCIES (USD/EUR/RUB) с названиями банков + переключатели. */
+    private function sendRateCategory(TelegramService $telegram, RateDigestService $digest, int $chatId, string $category): void
+    {
+        $otherCategory = $category === 'cash' ? 'transfer' : 'cash';
+
         $telegram->sendMessage(
             $chatId,
-            $digest->botCashSummary(),
-            $this->linkButton('Все курсы на сайте', $this->frontend('/kurs-valyut')),
+            $digest->botRateSummary($category, RateDigestService::MAIN_CURRENCIES),
+            [
+                'inline_keyboard' => [
+                    [
+                        ['text' => 'Другие валюты', 'callback_data' => "rt:more:{$category}"],
+                        ['text' => $digest->categoryLabel($otherCategory), 'callback_data' => "rt:cat:{$otherCategory}"],
+                    ],
+                    [['text' => 'Все курсы на сайте', 'url' => $this->frontend('/kurs-valyut')]],
+                ],
+            ],
+            true,
+            'HTML',
+        );
+    }
+
+    /** По кнопке "Другие валюты" — компактная таблица без банков. */
+    private function sendOtherCurrencies(TelegramService $telegram, RateDigestService $digest, int $chatId, string $category): void
+    {
+        $telegram->sendMessage(
+            $chatId,
+            '💱 <b>'.$digest->categoryLabel($category)." — другие валюты</b>\n".$digest->botOtherCurrenciesTable($category),
+            null,
             true,
             'HTML',
         );
@@ -252,6 +280,19 @@ class TelegramWebhookController extends Controller
 
         // Обязательный ack — иначе кнопка у пользователя "крутится".
         $telegram->answerCallbackQuery($callbackId);
+
+        // Кнопки сводки курсов (rt:) — без состояния, не завязаны на мастер алерта.
+        if (str_starts_with($data, 'rt:more:')) {
+            $this->sendOtherCurrencies($telegram, $digest, $chatId, substr($data, 8));
+
+            return response()->noContent();
+        }
+
+        if (str_starts_with($data, 'rt:cat:')) {
+            $this->sendRateCategory($telegram, $digest, $chatId, substr($data, 7));
+
+            return response()->noContent();
+        }
 
         $state = Cache::get($this->wizardCacheKey($chatId));
 
@@ -433,13 +474,12 @@ class TelegramWebhookController extends Controller
      * @param  array<int, string>  $currencies
      * @return array<string, mixed>
      */
+    /** По 4 кнопки в ряд — одним рядом на все валюты Telegram-клиент переносит непредсказуемо (часть уезжает за экран). */
     private function currencyKeyboard(array $currencies): array
     {
-        return [
-            'inline_keyboard' => [
-                array_map(fn (string $c): array => ['text' => $c, 'callback_data' => "aw:c:{$c}"], $currencies),
-            ],
-        ];
+        $buttons = array_map(fn (string $c): array => ['text' => $c, 'callback_data' => "aw:c:{$c}"], $currencies);
+
+        return ['inline_keyboard' => array_chunk($buttons, 4)];
     }
 
     /**

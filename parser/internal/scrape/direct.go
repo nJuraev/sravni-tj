@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // Direct — свой скрейпер: прямой HTTP GET, без внешних сервисов и без
@@ -81,11 +82,11 @@ func (d *Direct) get(ctx context.Context, rawURL string, limit int64) (string, e
 var (
 	// reCut вырезает целиком script/style/noscript/svg-блоки (включая
 	// содержимое — там нет читаемого текста, только код/CSS/иконки).
-	reCut        = regexp.MustCompile(`(?is)<(script|style|noscript|svg)[^>]*>.*?</(script|style|noscript|svg)>`)
-	reComment    = regexp.MustCompile(`(?s)<!--.*?-->`)
+	reCut     = regexp.MustCompile(`(?is)<(script|style|noscript|svg)[^>]*>.*?</(script|style|noscript|svg)>`)
+	reComment = regexp.MustCompile(`(?s)<!--.*?-->`)
 	// RE2 (Go regexp) не умеет backreferences — кавычки-открывашка/закрывашка
 	// проверяются двумя альтернативами, а не \1.
-	reAnchor = regexp.MustCompile(`(?is)<a\s+[^>]*?href\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
+	reAnchor     = regexp.MustCompile(`(?is)<a\s+[^>]*?href\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
 	reBlockTag   = regexp.MustCompile(`(?i)</(p|div|section|article|li|tr|h1|h2|h3|h4|h5|h6|br|table|ul|ol)>`)
 	reTag        = regexp.MustCompile(`(?s)<[^>]+>`)
 	reBlankLines = regexp.MustCompile(`\n{3,}`)
@@ -115,6 +116,12 @@ func linkify(s string) string {
 	})
 }
 
+// dedupMinLen — минимальная длина строки В РУНАХ (не байтах — текст в основном
+// кириллический, byte-len был бы вдвое строже) для дедупа повторов (см.
+// dedupLines). Короче — не трогаем: короткие лейблы форм («Телефон», «ФИО»)
+// легитимно повторяются в разных блоках страницы, это не шум шапки/меню/футера.
+const dedupMinLen = 20
+
 // htmlToText — readability-lite без внешних зависимостей: не ищет "основной
 // контент" по DOM-скорингу (как Jina/Readability), просто снимает разметку и
 // шум (плюс сохраняет ссылки как markdown, см. linkify). Хуже режет шапку/
@@ -136,5 +143,27 @@ func htmlToText(raw string) string {
 			out = append(out, line)
 		}
 	}
+	out = dedupLines(out)
 	return reBlankLines.ReplaceAllString(strings.Join(out, "\n"), "\n\n")
+}
+
+// dedupLines вырезает повторные вхождения длинных строк внутри одной страницы.
+// Банковские сайты почти всегда рендерят одно и то же меню несколько раз
+// (десктоп-шапка + мобильное меню + sitemap в футере — see car_prompt.txt на
+// eskhata.com: те же пункты меню втроём), это чистый шум для AI-экстрактора
+// и лишние токены. Дедуп без хардкода конкретных строк — держит первое
+// вхождение, режет остальные.
+func dedupLines(lines []string) []string {
+	seen := make(map[string]bool, len(lines))
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if utf8.RuneCountInString(line) >= dedupMinLen {
+			if seen[line] {
+				continue
+			}
+			seen[line] = true
+		}
+		out = append(out, line)
+	}
+	return out
 }
