@@ -84,6 +84,32 @@ var (
 	// содержимое — там нет читаемого текста, только код/CSS/иконки).
 	reCut     = regexp.MustCompile(`(?is)<(script|style|noscript|svg)[^>]*>.*?</(script|style|noscript|svg)>`)
 	reComment = regexp.MustCompile(`(?s)<!--.*?-->`)
+	// reNoiseBlocks вырезает известные шумные блоки по id — FAQ-аккордеон и
+	// форма заявки/звонка (найдено на ibt.tj: 4 FAQ + 9 форм на одной странице,
+	// +20-23% экономии сверх dedupLines, см. разбор /credits/kredit-na-...).
+	// Список — накопительный allowlist id'шников, замеченных на реальных
+	// сайтах; на банках без такого id — no-op, не риск (в отличие от
+	// css_hints/goquery — это НЕ выбор "основного контента", а вырезание
+	// заведомо нерелевантного, худший случай при редизайне — просто перестанет
+	// матчиться). Не вложены в другие <section> — non-greedy безопасен.
+	reNoiseBlocks = regexp.MustCompile(`(?is)<section\s+id="(?:faq-section|cform)"[^>]*>.*?</section>`)
+	// reHeader/reFooter/reNav вырезают семантические HTML5-теги шапки/футера/
+	// навигации целиком — по спецификации это НИКОГДА не основной контент,
+	// в отличие от css_hints (выбор "главного" контейнера) это не гадание,
+	// а вырезание заведомо служебного. Проверено на 9 живых страницах банков
+	// (humo/imon/spitamenbank/alif/ibt/oriyonbank) — теги сбалансированы,
+	// не вложены проблемно. На страницах без этих тегов — no-op.
+	//
+	// Три ОТДЕЛЬНЫХ regex, не одна alternation-группа: если <nav> вложен
+	// внутри <header> (частый случай), non-greedy в общей группе остановился
+	// бы на первом попавшемся </nav>, обрубив <header> раньше времени и
+	// оставив кусок футера "снаружи". Раздельные последовательные проходы
+	// (header, затем footer, затем nav) корректно съедают вложенность:
+	// header-проход поглощает вложенный nav целиком (его закрывающий тег
+	// header-регексу не важен), к nav-проходу извне уже ничего не остаётся.
+	reHeader = regexp.MustCompile(`(?is)<header[^>]*>.*?</header>`)
+	reFooter = regexp.MustCompile(`(?is)<footer[^>]*>.*?</footer>`)
+	reNav    = regexp.MustCompile(`(?is)<nav[^>]*>.*?</nav>`)
 	// RE2 (Go regexp) не умеет backreferences — кавычки-открывашка/закрывашка
 	// проверяются двумя альтернативами, а не \1.
 	reAnchor     = regexp.MustCompile(`(?is)<a\s+[^>]*?href\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
@@ -124,11 +150,16 @@ const dedupMinLen = 20
 
 // htmlToText — readability-lite без внешних зависимостей: не ищет "основной
 // контент" по DOM-скорингу (как Jina/Readability), просто снимает разметку и
-// шум (плюс сохраняет ссылки как markdown, см. linkify). Хуже режет шапку/
-// меню/футер, чем настоящий readability, но AI-экстрактор и так игнорирует
-// нерелевантный текст — здесь важно лишь не терять данные.
+// шум (вырезает <header>/<footer>/<nav> целиком, плюс сохраняет ссылки как
+// markdown, см. linkify). Контент вне этих тегов (например невынесенное в
+// <nav> меню) режет хуже настоящего readability, но AI-экстрактор и так
+// игнорирует нерелевантный текст — здесь важно лишь не терять данные.
 func htmlToText(raw string) string {
 	s := reCut.ReplaceAllString(raw, "\n")
+	s = reNoiseBlocks.ReplaceAllString(s, "\n")
+	s = reHeader.ReplaceAllString(s, "\n")
+	s = reFooter.ReplaceAllString(s, "\n")
+	s = reNav.ReplaceAllString(s, "\n")
 	s = reComment.ReplaceAllString(s, "")
 	s = linkify(s)
 	s = reBlockTag.ReplaceAllString(s, "\n")
