@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -132,12 +131,12 @@ func (p *Parser) runPipeline(ctx context.Context, task model.SourceTask, started
 	// arraysplit.go — почему: большие каталоги+билингва упирались в потолок
 	// вывода модели).
 	if task.ArrayPath != nil {
-		products, raw, err := p.runArraySplit(ctx, task)
+		products, raw, err := p.runArraySplit(ctx, task, startedAt)
 		markdown = raw
 		if err != nil {
 			return taskOutcome{status: store.RunError, errMessage: "scrape_error: " + err.Error()}
 		}
-		return p.finishPipeline(ctx, task, startedAt, products, "")
+		return p.finishPipeline(ctx, task, startedAt, products, "", "")
 	}
 
 	// --- Этап 1: SCRAPE (с ретраями транзиентных ошибок) ---
@@ -147,6 +146,19 @@ func (p *Parser) runPipeline(ctx context.Context, task model.SourceTask, started
 	}
 	markdown = md
 	p.log.Info("scrape ok", "task_id", task.ID, "url", task.URL, "markdown_chars", len(markdown))
+
+	// skip-if-unchanged (фаза 2a, только прямой путь — см. cache.go):
+	// если markdown побайтово совпадает с прошлым УСПЕШНЫМ (без отбраковки)
+	// прогоном, и тот прогон был прямым путём (не index-режимом) — не звать
+	// AI вообще, просто подтвердить "проверили, не изменилось".
+	hash := contentHash(markdown)
+	if task.LastMarkdownHash != nil && *task.LastMarkdownHash == hash {
+		if out, skipped, skipErr := p.trySkipUnchanged(ctx, task, startedAt); skipErr != nil {
+			p.log.Warn("skip-if-unchanged: проверка не удалась, парсим как обычно", "task_id", task.ID, "err", skipErr)
+		} else if skipped {
+			return out
+		}
+	}
 
 	// --- Этап 2: EXTRACT (с ретраями) ---
 	ext, err := retry(ctx, func() (*extract.Extraction, error) {
@@ -163,30 +175,47 @@ func (p *Parser) runPipeline(ctx context.Context, task model.SourceTask, started
 		return taskOutcome{status: store.RunError, aiRawResponse: aiRaw, errMessage: "ai_error: " + err.Error()}
 	}
 
-	// Index-режим (auto): если страница — каталог/меню со ссылками на отдельные
-	// страницы продуктов, обходим эти ссылки и собираем продукты с них.
-	// Иначе берём продукты, извлечённые прямо со страницы (старый путь).
-	// productSource хранит URL конкретной страницы, с которой продукт собран
-	// (products.source_url) — для index-режима это детальная страница, а НЕ
-	// страница-каталог задачи.
-	products := toProductSources(ext.Result.Products, task.URL)
+	// Строгое разделение ответственности: discover ищет ссылки на страницы
+	// продуктов (cmd/discover, отдельный пайплайн), parse только читает
+	// bank_source_urls и извлекает условия — без собственного повторного
+	// поиска ссылок (был auto-fallback index-режима, убран по решению).
+	// Если AI всё равно вернул product_links (значит задача — не лист,
+	// discover ошибся/сайт перестроился) — не идём по ссылкам сами, просто
+	// предупреждаем: источник нужно перенастроить в discovery, а не тихо
+	// компенсировать это здесь.
 	if len(ext.Result.ProductLinks) > 0 {
-		p.log.Info("index-режим: обнаружены ссылки на детали",
-			"task_id", task.ID, "links", len(ext.Result.ProductLinks))
-		products = p.gatherFromLinks(ctx, task, ext.Result.ProductLinks)
+		p.log.Warn("страница оказалась каталогом — обнови discovery-инструкцию, product_links игнорируются",
+			"task_id", task.ID, "url", task.URL, "links", len(ext.Result.ProductLinks))
 	}
+	products := toProductSources(ext.Result.Products, task.URL, hash)
 
-	return p.finishPipeline(ctx, task, startedAt, products, aiRaw)
+	return p.finishPipeline(ctx, task, startedAt, products, aiRaw, hash)
 }
 
 // finishPipeline — общий хвост обычного и array-split путей: валидация,
 // upsert, устаревание, итоговый статус задачи.
-func (p *Parser) finishPipeline(ctx context.Context, task model.SourceTask, startedAt time.Time, products []productSource, aiRaw string) taskOutcome {
+//
+// sourceHash — хэш markdown верхнеуровневой страницы задачи, для записи в
+// bank_source_urls.last_markdown_hash при полностью успешном (без
+// отбраковки) прогоне (skip-if-unchanged, cache.go). Пусто — не пишем
+// (array-split, фаза 2c, ещё не реализована).
+func (p *Parser) finishPipeline(ctx context.Context, task model.SourceTask, startedAt time.Time, products []productSource, aiRaw string, sourceHash string) taskOutcome {
 	// --- Этап 3: VALIDATE + split-by-currency + Этап 4: UPSERT ---
 	upserted, anyRejected, dbErr := p.persistProducts(ctx, task, products)
 	if dbErr != nil {
 		// Ошибка БД — задача провалена (ретрай уже исчерпан внутри persist).
 		return taskOutcome{status: store.RunError, aiRawResponse: aiRaw, errMessage: "db_error: " + dbErr.Error()}
+	}
+
+	// skip-if-unchanged: хэш пишем при ЛЮБОМ полностью успешном (без
+	// отбраковки) прогоне — включая честно пустой (AI не нашёл продуктов,
+	// это не брак). Отбракованный прогон хэш НЕ получает: иначе отбракованная
+	// карточка навсегда выпадет из кэша (нет строки в products → вечно
+	// считается новой) — см. разбор части B.
+	if sourceHash != "" && !anyRejected {
+		if err := p.st.UpdateSourceMarkdownHash(ctx, task.ID, sourceHash); err != nil {
+			p.log.Warn("не удалось обновить last_markdown_hash", "task_id", task.ID, "err", err)
+		}
 	}
 
 	// --- Пост-обработка: устаревание + last_parsed_at ---
@@ -262,6 +291,7 @@ func (p *Parser) persistProducts(ctx context.Context, task model.SourceTask, pro
 			Product:     res.Product,
 			ParsedAt:    now,
 			SourceURL:   products[i].URL,
+			ContentHash: products[i].Hash,
 		}
 
 		// Этап 4: idempotent upsert с ретраями транзиентных ошибок БД.
@@ -305,134 +335,19 @@ func filterTasksByBank(tasks []model.SourceTask, bankIDs []int64) []model.Source
 type productSource struct {
 	Product model.ParsedProduct
 	URL     string
+	// Hash — sha256 текста, из которого продукт извлечён (products.content_hash,
+	// skip-if-unchanged кэш, см. cache.go). Пусто — кэш для этого пути ещё не
+	// реализован (index-режим/array-split, фазы 2b/2c).
+	Hash string
 }
 
-// toProductSources оборачивает продукты прямого пути (без index-режима)
-// одним и тем же URL — страницей самой задачи.
-func toProductSources(products []model.ParsedProduct, url string) []productSource {
+// toProductSources оборачивает продукты одним и тем же URL и (если задан)
+// хэшем контента, из которого они извлечены.
+func toProductSources(products []model.ParsedProduct, url string, hash string) []productSource {
 	out := make([]productSource, len(products))
 	for i, pr := range products {
-		out[i] = productSource{Product: pr, URL: url}
+		out[i] = productSource{Product: pr, URL: url, Hash: hash}
 	}
-	return out
-}
-
-// maxDetailPages ограничивает число детальных страниц на один index-источник
-// (защита от взрывного роста AI-вызовов и от мусорных ссылок).
-const maxDetailPages = 40
-
-// reMarkdownLink матчит markdown-ссылку [текст](url), см. linkify в direct.go.
-var reMarkdownLink = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
-
-// stripLinkSyntax убирает markdown-разметку ссылок, оставляя только текст.
-// Применяется ТОЛЬКО там, где режим страницы заранее известен как "детальная
-// страница продукта" (см. вызов в gatherFromLinks) — на страницах-каталогах
-// ссылки нужны AI для product_links, там эту функцию звать нельзя.
-func stripLinkSyntax(md string) string {
-	return reMarkdownLink.ReplaceAllString(md, "$1")
-}
-
-// detailJob — резолвленная детальная ссылка, готовая к скрейпу+извлечению.
-type detailJob struct {
-	url     string
-	section *string
-}
-
-// resolveDetailLinks резолвит относительные ссылки относительно URL листинга,
-// отбрасывает внешние домены и дубли (после нормализации), режет по
-// maxDetailPages. Чистая функция без сети — безопасно вызывать до запуска
-// горутин ниже.
-func resolveDetailLinks(task model.SourceTask, links []model.ProductLink, log *slog.Logger) []detailJob {
-	base, baseErr := url.Parse(task.URL)
-	seen := make(map[string]bool)
-	var jobs []detailJob
-
-	for _, link := range links {
-		s := strings.TrimSpace(link.URL)
-		if s == "" {
-			continue
-		}
-		abs := s
-		if ref, err := url.Parse(s); err == nil && baseErr == nil {
-			abs = base.ResolveReference(ref).String()
-		}
-		if !sameSite(task.URL, abs) {
-			continue // только домен банка (включая поддомены)
-		}
-		key := normalizeURL(abs)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		if len(jobs) >= maxDetailPages {
-			log.Warn("index: достигнут лимит детальных страниц", "task_id", task.ID, "limit", maxDetailPages)
-			break
-		}
-		jobs = append(jobs, detailJob{url: abs, section: link.Section})
-	}
-	return jobs
-}
-
-// gatherFromLinks обходит ссылки на детальные страницы продуктов (index-режим):
-// каждую скрейпит и извлекает, агрегируя продукты. Ссылки одной задачи
-// обрабатываются ПАРАЛЛЕЛЬНО (пул ограничен p.cfg.Concurrency — тем же
-// лимитом, что и для задач верхнего уровня), иначе банк с десятком детальных
-// страниц последовательно съедает минуты на одну задачу. Ошибки отдельных
-// ссылок не валят задачу (пропускаются с логом). Рекурсии нет — product_links
-// деталей игнорируются.
-func (p *Parser) gatherFromLinks(ctx context.Context, task model.SourceTask, links []model.ProductLink) []productSource {
-	jobs := resolveDetailLinks(task, links, p.log)
-
-	var (
-		mu  sync.Mutex
-		out []productSource
-		wg  sync.WaitGroup
-	)
-	sem := make(chan struct{}, p.cfg.Concurrency)
-
-	for _, j := range jobs {
-		j := j
-		wg.Add(1)
-		sem <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			markdown, err := p.fetchBilingual(ctx, j.url, task.LangURLRule, task.Scraper, task.ID)
-			if err != nil {
-				p.log.Warn("index: scrape детали не удался", "task_id", task.ID, "url", j.url, "err", err)
-				return
-			}
-			// Это точно страница конкретного продукта (детальная ссылка уже
-			// резолвлена из index-режима, рекурсии нет — см. коммент ниже про
-			// product_links деталей). Ссылки меню здесь AI не нужны вообще —
-			// снимаем markdown-синтаксис, экономим токены и убираем шум.
-			markdown = stripLinkSyntax(markdown)
-			// Гибрид-подсказка: подмешиваем заголовок раздела меню в начало markdown,
-			// чтобы AI точнее определил подкатегорию.
-			if j.section != nil {
-				if sec := strings.TrimSpace(*j.section); sec != "" {
-					markdown = "Раздел меню: " + sec + "\n\n" + markdown
-				}
-			}
-			ext, err := retry(ctx, func() (*extract.Extraction, error) {
-				actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
-				defer cancel()
-				return p.ai.Extract(actx, markdown, task.Category)
-			})
-			if err != nil {
-				p.log.Warn("index: extract детали не удался", "task_id", task.ID, "url", j.url, "err", err)
-				return
-			}
-			// Вложенные product_links деталей игнорируем — без рекурсии.
-			products := toProductSources(ext.Result.Products, j.url)
-
-			mu.Lock()
-			out = append(out, products...)
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
 	return out
 }
 
@@ -605,43 +520,3 @@ func mergeBilingual(ru, tj string) string {
 	return "Версия страницы на русском:\n" + ru + "\n\n---\n\nВерсия страницы на таджикском:\n" + tj
 }
 
-// sameSite сравнивает регистрируемые домены (последние два лейбла) двух URL,
-// поэтому поддомены одного банка (credit.dc.tj и dc.tj) считаются «своими».
-func sameSite(a, b string) bool {
-	ua, err1 := url.Parse(a)
-	ub, err2 := url.Parse(b)
-	if err1 != nil || err2 != nil {
-		return false
-	}
-	return regDomain(ua.Hostname()) == regDomain(ub.Hostname())
-}
-
-// regDomain возвращает последние два лейбла хоста (грубый registrable domain).
-func regDomain(h string) string {
-	parts := strings.Split(strings.ToLower(h), ".")
-	if len(parts) < 2 {
-		return strings.ToLower(h)
-	}
-	return parts[len(parts)-2] + "." + parts[len(parts)-1]
-}
-
-// normalizeURL приводит URL к канонической форме только для дедупа ссылок
-// внутри одного index-обхода (без fragment/tracking-параметров/хвостового
-// слэша, host в нижнем регистре).
-func normalizeURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	u.Fragment = ""
-	u.Host = strings.ToLower(u.Host)
-	u.Scheme = strings.ToLower(u.Scheme)
-	if q := u.Query(); len(q) > 0 {
-		for _, k := range []string{"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "fbclid", "gclid", "ysclid", "yclid"} {
-			q.Del(k)
-		}
-		u.RawQuery = q.Encode()
-	}
-	u.Path = strings.TrimSuffix(u.Path, "/")
-	return u.String()
-}

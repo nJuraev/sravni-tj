@@ -35,6 +35,11 @@ type ProductWrite struct {
 	// прямого парсинга — URL задачи; для index-режима — URL конкретной
 	// детальной страницы, с которой продукт собран (не страница-каталог).
 	SourceURL string
+	// ContentHash — sha256 текста (markdown/JSON-элемента), из которого этот
+	// продукт извлечён. Пусто — не пишем (skip-if-unchanged кэш для этой
+	// задачи не задействован в этом прогоне, напр. index-режим/array-split
+	// до соответствующей фазы реализации).
+	ContentHash string
 }
 
 // RateWrite — подготовленный к записи курс валюты (одна строка bank_currency_rates).
@@ -113,6 +118,30 @@ type Store interface {
 	// TouchBankRatesUpdated обновляет banks.rates_updated_at — только при
 	// УСПЕШНОМ прогоне (>0 сохранённых курсов).
 	TouchBankRatesUpdated(ctx context.Context, bankID int64, at time.Time) error
+
+	// DistinctProductSourceURLs возвращает уникальные products.source_url для
+	// задачи (source_url_id) — используется для skip-if-unchanged: если
+	// набор состоит из ОДНОГО url, совпадающего с url самой задачи — это
+	// прямой путь (не index-режим), можно безопасно пропустить AI целиком.
+	DistinctProductSourceURLs(ctx context.Context, sourceURLID int64) ([]string, error)
+
+	// ProductContentHash возвращает content_hash существующего продукта по
+	// (source_url_id, source_url) — точечный lookup для array-split (каждый
+	// элемент массива адресуется своим source_url = task.URL+"#"+naturalID,
+	// см. arraysplit.go). found=false — продукта с таким source_url ещё нет
+	// (новый элемент, парсим как обычно).
+	ProductContentHash(ctx context.Context, sourceURLID int64, sourceURL string) (hash string, found bool, err error)
+
+	// TouchProductsBySourceURL обновляет parsed_at всех продуктов задачи с
+	// данным source_url (без изменения остальных полей) — используется при
+	// skip-if-unchanged, чтобы продукт не считался устаревшим (MarkOutdated),
+	// хотя AI в этом прогоне не вызывался. Возвращает кол-во затронутых строк.
+	TouchProductsBySourceURL(ctx context.Context, sourceURLID int64, sourceURL string, at time.Time) (int64, error)
+
+	// UpdateSourceMarkdownHash пишет bank_source_urls.last_markdown_hash —
+	// хэш markdown верхнеуровневой страницы задачи после успешного (без
+	// отбраковки) прогона.
+	UpdateSourceMarkdownHash(ctx context.Context, sourceURLID int64, hash string) error
 
 	// Close освобождает пул соединений.
 	Close()

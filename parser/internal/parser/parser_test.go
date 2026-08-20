@@ -89,6 +89,22 @@ func (m *mockStore) TouchBankRatesUpdated(ctx context.Context, bankID int64, at 
 	return nil
 }
 
+func (m *mockStore) DistinctProductSourceURLs(ctx context.Context, sourceURLID int64) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockStore) ProductContentHash(ctx context.Context, sourceURLID int64, sourceURL string) (string, bool, error) {
+	return "", false, nil
+}
+
+func (m *mockStore) TouchProductsBySourceURL(ctx context.Context, sourceURLID int64, sourceURL string, at time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockStore) UpdateSourceMarkdownHash(ctx context.Context, sourceURLID int64, hash string) error {
+	return nil
+}
+
 func (m *mockStore) Close() {}
 
 func (m *mockStore) runCount() int {

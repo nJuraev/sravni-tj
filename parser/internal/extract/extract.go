@@ -47,6 +47,16 @@ func New(cfg *config.Config, client *http.Client) (AIExtractor, error) {
 	}
 }
 
+// PromptVersion — версия контракта экстракции (systemPrompt + responseSchema +
+// то, как они собираются в запрос, напр. schemaPromptText для DeepSeek).
+// Мешается в skip-if-unchanged хэш (parser/cache.go): если страница банка не
+// изменилась, но МЫ поменяли промпт/схему — старый хэш обязан перестать
+// совпадать, чтобы продукт заново прошёл через новую логику, а не тихо
+// остался с данными, извлечёнными старой версией. Бампать на любое смысловое
+// изменение systemPrompt/responseSchema/schemaPromptText — просто +1, номер
+// не привязан к семверу проекта.
+const PromptVersion = "1"
+
 // systemPrompt — системная инструкция: модель работает как экстрактор,
 // обязана вернуть строго JSON по схеме, без выдумывания данных.
 // (Анти-галлюцинации: §1, §2 ai-output-schema.md.)

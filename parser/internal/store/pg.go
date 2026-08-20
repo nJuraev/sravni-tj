@@ -43,7 +43,7 @@ func (s *PG) Close() {
 func (s *PG) ActiveTasks(ctx context.Context) ([]model.SourceTask, error) {
 	const q = `
 		SELECT u.id, u.bank_id, u.category, u.url, u.array_path, u.scraper,
-			b.lang_url_rule_type, b.lang_url_rule_params
+			u.last_markdown_hash, b.lang_url_rule_type, b.lang_url_rule_params
 		FROM bank_source_urls u
 		JOIN banks b ON b.id = u.bank_id
 		WHERE u.is_active = true
@@ -63,7 +63,7 @@ func (s *PG) ActiveTasks(ctx context.Context) ([]model.SourceTask, error) {
 			ruleType   *string
 			ruleParams []byte // jsonb или NULL
 		)
-		if err := rows.Scan(&t.ID, &t.BankID, &cat, &t.URL, &t.ArrayPath, &scraper, &ruleType, &ruleParams); err != nil {
+		if err := rows.Scan(&t.ID, &t.BankID, &cat, &t.URL, &t.ArrayPath, &scraper, &t.LastMarkdownHash, &ruleType, &ruleParams); err != nil {
 			return nil, fmt.Errorf("store: scan задачи: %w", err)
 		}
 		t.Category = model.Category(cat)
@@ -265,6 +265,10 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 	if pw.SourceURL != "" {
 		sourceURL = &pw.SourceURL
 	}
+	var contentHash *string
+	if pw.ContentHash != "" {
+		contentHash = &pw.ContentHash
+	}
 
 	// 0) Поиск существующей строки того же продукта в рамках банка (по всем
 	//    source_url_id), а не только по текущему источнику задачи.
@@ -319,6 +323,7 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 				documents_ru      = $21,
 				documents_tg      = $22,
 				source_url        = $23,
+				content_hash      = $24,
 				updated_at     = now()
 			WHERE id = $1
 			RETURNING id`
@@ -326,7 +331,7 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 			existingID, pw.SourceURLID, string(p.Category), p.Subcategory, p.IsSpecial, featuresJSON,
 			p.NameRU, p.NameTG, p.DescriptionRU, p.DescriptionTG, string(p.Currency),
 			p.RateMin, p.RateMax, p.AmountMin, p.AmountMax, p.TermMin, p.TermMax, pw.ParsedAt,
-			keyCondRU, keyCondTG, docsRU, docsTG, sourceURL,
+			keyCondRU, keyCondTG, docsRU, docsTG, sourceURL, contentHash,
 		).Scan(&productID)
 		if err != nil {
 			return 0, fmt.Errorf("store: обновление продукта (bank dedup): %w", err)
@@ -339,14 +344,14 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 				 rate_min, rate_max, amount_min, amount_max, term_min, term_max,
 				 features, parsed_at, subcategory, is_special,
 				 key_conditions_ru, key_conditions_tg, documents_ru, documents_tg, source_url,
-				 created_at, updated_at)
+				 content_hash, created_at, updated_at)
 			VALUES
 				($1, $2, $3, $4, $5, $6,
 				 $7, $8, 'active', $9,
 				 $10, $11, $12, $13, $14, $15,
 				 $16, $17, $18, $19,
 				 $20, $21, $22, $23, $24,
-				 now(), now())
+				 $25, now(), now())
 			ON CONFLICT (source_url_id, external_key) DO UPDATE SET
 				bank_id        = EXCLUDED.bank_id,
 				category       = CASE WHEN products.locked_fields @> '"category"'::jsonb
@@ -375,6 +380,7 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 				documents_ru      = EXCLUDED.documents_ru,
 				documents_tg      = EXCLUDED.documents_tg,
 				source_url        = EXCLUDED.source_url,
+				content_hash      = EXCLUDED.content_hash,
 				updated_at     = now()
 			RETURNING id`
 		err = tx.QueryRow(ctx, insertSQL,
@@ -382,7 +388,7 @@ func (s *PG) UpsertProduct(ctx context.Context, pw ProductWrite) (int64, error) 
 			p.NameRU, p.NameTG, p.DescriptionRU, p.DescriptionTG, string(p.Currency),
 			p.RateMin, p.RateMax, p.AmountMin, p.AmountMax, p.TermMin, p.TermMax,
 			featuresJSON, pw.ParsedAt, p.Subcategory, p.IsSpecial,
-			keyCondRU, keyCondTG, docsRU, docsTG, sourceURL,
+			keyCondRU, keyCondTG, docsRU, docsTG, sourceURL, contentHash,
 		).Scan(&productID)
 		if err != nil {
 			return 0, fmt.Errorf("store: upsert продукта: %w", err)
@@ -479,6 +485,65 @@ func (s *PG) TouchSourceParsed(ctx context.Context, sourceURLID int64, at time.T
 	const q = `UPDATE bank_source_urls SET last_parsed_at = $2, updated_at = now() WHERE id = $1`
 	if _, err := s.pool.Exec(ctx, q, sourceURLID, at); err != nil {
 		return fmt.Errorf("store: touch last_parsed_at: %w", err)
+	}
+	return nil
+}
+
+// DistinctProductSourceURLs — уникальные products.source_url задачи. См.
+// интерфейс Store для смысла (различение прямого пути от index-режима).
+func (s *PG) DistinctProductSourceURLs(ctx context.Context, sourceURLID int64) ([]string, error) {
+	const q = `SELECT DISTINCT source_url FROM products WHERE source_url_id = $1 AND source_url IS NOT NULL`
+	rows, err := s.pool.Query(ctx, q, sourceURLID)
+	if err != nil {
+		return nil, fmt.Errorf("store: distinct source_url: %w", err)
+	}
+	defer rows.Close()
+
+	var urls []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, fmt.Errorf("store: scan distinct source_url: %w", err)
+		}
+		urls = append(urls, u)
+	}
+	return urls, rows.Err()
+}
+
+// ProductContentHash — точечный lookup content_hash по (source_url_id, source_url).
+func (s *PG) ProductContentHash(ctx context.Context, sourceURLID int64, sourceURL string) (string, bool, error) {
+	const q = `SELECT content_hash FROM products WHERE source_url_id = $1 AND source_url = $2 LIMIT 1`
+	var hash *string
+	err := s.pool.QueryRow(ctx, q, sourceURLID, sourceURL).Scan(&hash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("store: product content_hash: %w", err)
+	}
+	if hash == nil {
+		return "", false, nil
+	}
+	return *hash, true, nil
+}
+
+// TouchProductsBySourceURL — bump parsed_at без изменения остальных полей
+// (skip-if-unchanged: подтверждаем "проверили, не изменилось", не заново
+// извлекаем и не перезаписываем данные).
+func (s *PG) TouchProductsBySourceURL(ctx context.Context, sourceURLID int64, sourceURL string, at time.Time) (int64, error) {
+	const q = `UPDATE products SET parsed_at = $3 WHERE source_url_id = $1 AND source_url = $2`
+	tag, err := s.pool.Exec(ctx, q, sourceURLID, sourceURL, at)
+	if err != nil {
+		return 0, fmt.Errorf("store: touch products parsed_at: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+// UpdateSourceMarkdownHash пишет bank_source_urls.last_markdown_hash.
+func (s *PG) UpdateSourceMarkdownHash(ctx context.Context, sourceURLID int64, hash string) error {
+	const q = `UPDATE bank_source_urls SET last_markdown_hash = $2, updated_at = now() WHERE id = $1`
+	if _, err := s.pool.Exec(ctx, q, sourceURLID, hash); err != nil {
+		return fmt.Errorf("store: update last_markdown_hash: %w", err)
 	}
 	return nil
 }

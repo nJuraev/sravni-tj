@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"sravni/parser/internal/extract"
 	"sravni/parser/internal/jsonpath"
@@ -38,7 +39,7 @@ const maxArrayElements = 100
 //     пытаемся: только ru, name_tg останется null (честно).
 //   - nil (Арванд: поля уже билингвальны в каждом элементе) — ничего доп.
 //     делать не нужно, AI сам прочитает title_ru/title_tg из одного элемента.
-func (p *Parser) runArraySplit(ctx context.Context, task model.SourceTask) ([]productSource, string, error) {
+func (p *Parser) runArraySplit(ctx context.Context, task model.SourceTask, startedAt time.Time) ([]productSource, string, error) {
 	arrayPath := ""
 	if task.ArrayPath != nil {
 		arrayPath = *task.ArrayPath
@@ -80,6 +81,30 @@ func (p *Parser) runArraySplit(ctx context.Context, task model.SourceTask) ([]pr
 			defer func() { <-sem }()
 
 			text := elementText(elem, tjByID)
+
+			// skip-if-unchanged на уровне ОДНОГО элемента: у каждого элемента
+			// свой естественный id (Арванд — slug, ICB/SSB — id), source_url =
+			// task.URL+"#"+naturalID — иначе все элементы одной задачи делили
+			// бы один source_url и были бы неразличимы для кэша (см. разбор).
+			// Без natural id (не нашли ни slug, ни id) — кэш недоступен для
+			// этого элемента, парсим как обычно каждый раз.
+			sourceURL := task.URL
+			hash := ""
+			if naturalID, ok := naturalElementID(elem); ok {
+				sourceURL = task.URL + "#" + naturalID
+				hash = contentHash(text)
+				existing, found, err := p.st.ProductContentHash(ctx, task.ID, sourceURL)
+				if err != nil {
+					p.log.Warn("array-split: проверка кэша не удалась, парсю как обычно", "task_id", task.ID, "url", sourceURL, "err", err)
+				} else if found && existing == hash {
+					if _, err := p.st.TouchProductsBySourceURL(ctx, task.ID, sourceURL, startedAt); err != nil {
+						p.log.Warn("array-split: touch parsed_at не удался", "task_id", task.ID, "url", sourceURL, "err", err)
+					}
+					p.log.Info("array-split: элемент пропущен, контент не изменился", "task_id", task.ID, "url", sourceURL)
+					return
+				}
+			}
+
 			ext, err := retry(ctx, func() (*extract.Extraction, error) {
 				actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
 				defer cancel()
@@ -89,7 +114,7 @@ func (p *Parser) runArraySplit(ctx context.Context, task model.SourceTask) ([]pr
 				p.log.Warn("array-split: extract элемента не удался", "task_id", task.ID, "err", err)
 				return
 			}
-			products := toProductSources(ext.Result.Products, task.URL)
+			products := toProductSources(ext.Result.Products, sourceURL, hash)
 
 			mu.Lock()
 			out = append(out, products...)
@@ -174,6 +199,28 @@ func stripEnglishFields(v any) any {
 		out[k] = val
 	}
 	return out
+}
+
+// naturalElementID достаёт естественный идентификатор элемента массива —
+// "slug" (Арванд) или "id" (ICB/SSB) — для адресации в skip-if-unchanged
+// кэше (products.source_url = task.URL+"#"+naturalID). Пусто/не найдено —
+// кэш для этого элемента недоступен, не фатально.
+func naturalElementID(elem any) (string, bool) {
+	m, ok := elem.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	for _, key := range []string{"slug", "id"} {
+		v, exists := m[key]
+		if !exists || v == nil {
+			continue
+		}
+		s := strings.TrimSpace(fmt.Sprint(v))
+		if s != "" {
+			return s, true
+		}
+	}
+	return "", false
 }
 
 // elementText — текст ОДНОГО элемента для AI: сам элемент как JSON, плюс

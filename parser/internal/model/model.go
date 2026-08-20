@@ -33,13 +33,14 @@ func (c Currency) Valid() bool {
 
 // SourceTask — одна задача парсинга, строка bank_source_urls (is_active=true).
 type SourceTask struct {
-	ID          int64        // bank_source_urls.id
-	BankID      int64        // bank_source_urls.bank_id
-	Category    Category     // category задачи; продукты обязаны ей соответствовать
-	URL         string       // URL страницы для скрейпинга (ru-версия)
-	LangURLRule *LangURLRule // правило банка для вывода tj-версии URL; nil — не искать
-	ArrayPath   *string      // array-split режим: путь (jsonpath.Resolve) до массива продуктов в JSON-ответе; nil — выключен
-	Scraper     string       // bank_source_urls.scraper: "" — свой скрейпер (дефолт), "firecrawl" — источник требует JS-рендер
+	ID               int64        // bank_source_urls.id
+	BankID           int64        // bank_source_urls.bank_id
+	Category         Category     // category задачи; продукты обязаны ей соответствовать
+	URL              string       // URL страницы для скрейпинга (ru-версия)
+	LangURLRule      *LangURLRule // правило банка для вывода tj-версии URL; nil — не искать
+	ArrayPath        *string      // array-split режим: путь (jsonpath.Resolve) до массива продуктов в JSON-ответе; nil — выключен
+	Scraper          string       // bank_source_urls.scraper: "" — свой скрейпер (дефолт), "firecrawl" — источник требует JS-рендер
+	LastMarkdownHash *string      // bank_source_urls.last_markdown_hash — хэш markdown с прошлого успешного прогона; nil — кэша ещё нет
 }
 
 // LangURLRule — как получить tj-версию страницы из её ru-версии, на уровне
