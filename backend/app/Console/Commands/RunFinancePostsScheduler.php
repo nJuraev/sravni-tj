@@ -105,6 +105,13 @@ class RunFinancePostsScheduler extends Command
             return;
         }
 
+        // currency: LLM пишет только вступление без цифр (проверено промптом
+        // в buildCurrencyContext) — сами цифры подставляет код (digestHtml),
+        // чтобы модель не путала и не приукрашивала курсы валют.
+        if ($kind === 'currency') {
+            $body = htmlspecialchars($body)."\n\n".$rateSnapshot->digestHtml();
+        }
+
         $generatedAt = now();
         $sendAt = $generatedAt->clone()->addMinutes(random_int(1, 90));
 
@@ -212,8 +219,13 @@ class RunFinancePostsScheduler extends Command
             throw new RuntimeException('Нет данных по курсам валют в bank_currency_rates.');
         }
 
-        $context = $service->toPromptContext($snapshot)
-            ."\n\nНапиши пост о текущих курсах валют, используя ТОЛЬКО эти цифры.";
+        // Никаких цифр в контексте: сами курсы подставляет код после генерации
+        // (digestHtml, см. maybeGenerateTodaysPost) — LLM только на вступление,
+        // без права трогать цифры/валюты/банки.
+        $context = 'Напиши короткое живое вступление (1-2 предложения) к посту о курсах валют '
+            .'в Таджикистане на сегодня — приглашение сравнить курсы. '
+            .'Не упоминай конкретные цифры, валюты или банки — таблица с курсами будет добавлена '
+            .'отдельно сразу после твоего текста.';
 
         return [$context, null, null, null];
     }

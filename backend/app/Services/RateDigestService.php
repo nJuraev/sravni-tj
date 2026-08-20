@@ -149,6 +149,25 @@ class RateDigestService
      */
     public function botRateSummary(string $category, array $currencies): string
     {
+        $blocks = $this->currencyBlocksHtml($category, $currencies);
+
+        if ($blocks === []) {
+            return 'Сейчас нет данных по курсам.';
+        }
+
+        return '💱 <b>'.$this->categoryLabel($category)." — курс сегодня</b>\n\n".implode("\n\n", $blocks);
+    }
+
+    /**
+     * Готовые HTML-блоки "валюта + продаёт/покупает + банки" по каждой из
+     * currencies, где есть данные — общая часть botRateSummary() и постов
+     * канала (RunFinancePostsScheduler), чтобы цифры собирал код, не LLM.
+     *
+     * @param  array<int, string>  $currencies
+     * @return array<int, string>
+     */
+    public function currencyBlocksHtml(string $category, array $currencies): array
+    {
         $blocks = [];
 
         foreach ($currencies as $currency) {
@@ -165,11 +184,7 @@ class RateDigestService
                 .'  Банк покупает: '.$this->formatSideHtml($buy);
         }
 
-        if ($blocks === []) {
-            return 'Сейчас нет данных по курсам.';
-        }
-
-        return '💱 <b>'.$this->categoryLabel($category)." — курс сегодня</b>\n\n".implode("\n\n", $blocks);
+        return $blocks;
     }
 
     /**

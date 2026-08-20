@@ -7,7 +7,8 @@ namespace App\Services;
 /**
  * Снепшот текущих курсов валют для «дня курсов» (см. PostTopicSelector::WEEKLY_PATTERN).
  * Переиспользует RateDigestService (та же логика «лучшего курса», что и в
- * DispatchRateAlerts/боте) — здесь только сборка структуры и текста для LLM-промпта.
+ * DispatchRateAlerts/боте). digestHtml() — готовый блок с цифрами для поста
+ * в канал, собранный кодом (не LLM — см. RunFinancePostsScheduler).
  *
  * История курсов (динамика за месяц/квартал) — отдельная будущая задача,
  * bank_currency_rates сейчас хранит только последний снепшот на дату.
@@ -23,7 +24,7 @@ class CurrencyRateSnapshotService
     {
         $snapshot = [];
 
-        foreach (RateDigestService::BOT_CURRENCIES as $currency) {
+        foreach (RateDigestService::MAIN_CURRENCIES as $currency) {
             $rows = $this->digest->latestRates('cash', $currency);
 
             $snapshot[] = [
@@ -51,18 +52,14 @@ class CurrencyRateSnapshotService
     }
 
     /**
-     * Реальные цифры в текстовом виде для LLM-промпта — без права «придумать» курс.
-     *
-     * @param  array<int, array{currency: string, sell: array{value: float|null, banks: array<int, string>}, buy: array{value: float|null, banks: array<int, string>}}>  $snapshot
+     * Готовый HTML-блок с реальными цифрами (курс + банки) для поста в канал —
+     * собирается кодом, не LLM, чтобы модель не могла «приукрасить» или
+     * перепутать цифры между валютами.
      */
-    public function toPromptContext(array $snapshot): string
+    public function digestHtml(): string
     {
-        $lines = ['Актуальные курсы валют (наличные) по данным банков Таджикистана на сегодня:'];
+        $blocks = $this->digest->currencyBlocksHtml('cash', RateDigestService::MAIN_CURRENCIES);
 
-        foreach ($snapshot as $row) {
-            $lines[] = "{$row['currency']}: банк продаёт — {$this->digest->formatSide($row['sell'])}, банк покупает — {$this->digest->formatSide($row['buy'])}";
-        }
-
-        return implode("\n", $lines);
+        return '💱 <b>Курс валют (наличные) сегодня</b>'."\n\n".implode("\n\n", $blocks);
     }
 }

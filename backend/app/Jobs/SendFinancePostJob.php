@@ -44,7 +44,11 @@ class SendFinancePostJob implements ShouldQueue
         }
 
         try {
-            $sent = $telegram->sendMessage((int) $channelId, $post->body);
+            $sent = $telegram->sendMessage(
+                (int) $channelId,
+                $post->body,
+                parseMode: $post->kind === 'currency' ? 'HTML' : null,
+            );
         } catch (\Throwable $e) {
             $post->forceFill(['status' => 'failed', 'error' => $e->getMessage()])->save();
 
