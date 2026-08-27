@@ -54,8 +54,9 @@ type dsRequest struct {
 	MaxTokens      int               `json:"max_tokens,omitempty"`
 }
 
-// chat выполняет один вызов DeepSeek в JSON-режиме и возвращает текст ответа.
-func (d *DeepSeek) chat(ctx context.Context, systemMsg, userMsg string) (string, error) {
+// chat выполняет один вызов DeepSeek в JSON-режиме и возвращает текст ответа
+// + токены вызова (usage — для оценки стоимости прогона).
+func (d *DeepSeek) chat(ctx context.Context, systemMsg, userMsg string) (string, *TokenUsage, error) {
 	reqBody := dsRequest{
 		Model: d.model,
 		Messages: []openAIMessage{
@@ -68,25 +69,25 @@ func (d *DeepSeek) chat(ctx context.Context, systemMsg, userMsg string) (string,
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("deepseek: marshal: %w", err)
+		return "", nil, fmt.Errorf("deepseek: marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, deepSeekEndpoint, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("deepseek: new request: %w", err)
+		return "", nil, fmt.Errorf("deepseek: new request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+d.apiKey)
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("deepseek: do: %w", err)
+		return "", nil, fmt.Errorf("deepseek: do: %w", err)
 	}
 	defer resp.Body.Close()
 
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", &APIError{
+		return "", nil, &APIError{
 			StatusCode: resp.StatusCode,
 			RetryAfter: resp.Header.Get("Retry-After"),
 			Body:       truncateRunes(string(raw), 500),
@@ -95,15 +96,23 @@ func (d *DeepSeek) chat(ctx context.Context, systemMsg, userMsg string) (string,
 
 	var parsed openAIResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return "", fmt.Errorf("deepseek: unmarshal envelope: %w", err)
+		return "", nil, fmt.Errorf("deepseek: unmarshal envelope: %w", err)
 	}
 	if parsed.Error != nil {
-		return "", fmt.Errorf("deepseek: api error: %s", parsed.Error.Message)
+		return "", nil, fmt.Errorf("deepseek: api error: %s", parsed.Error.Message)
 	}
 	if len(parsed.Choices) == 0 {
-		return "", fmt.Errorf("deepseek: пустой ответ (нет choices)")
+		return "", nil, fmt.Errorf("deepseek: пустой ответ (нет choices)")
 	}
-	return parsed.Choices[0].Message.Content, nil
+	var usage *TokenUsage
+	if parsed.Usage != nil {
+		usage = &TokenUsage{
+			PromptTokens:     parsed.Usage.PromptTokens,
+			CompletionTokens: parsed.Usage.CompletionTokens,
+			TotalTokens:      parsed.Usage.TotalTokens,
+		}
+	}
+	return parsed.Choices[0].Message.Content, usage, nil
 }
 
 // stripSchemaDescriptions убирает поле "description" из JSON Schema —
@@ -150,24 +159,25 @@ func schemaPromptText(schema map[string]any) string {
 var (
 	productSchemaText = schemaPromptText(responseSchema())
 	ratesSchemaText   = schemaPromptText(ratesSchema())
+	linksSchemaText   = schemaPromptText(linksSchema())
 )
 
 // Extract реализует AIExtractor (продукты).
-func (d *DeepSeek) Extract(ctx context.Context, markdown string, category model.Category) (*Extraction, error) {
-	rawText, err := d.chat(ctx, systemPrompt+productSchemaText, userPrompt(markdown, category))
+func (d *DeepSeek) Extract(ctx context.Context, sourceURL, markdown string, category model.Category) (*Extraction, error) {
+	rawText, usage, err := d.chat(ctx, systemPrompt+productSchemaText, userPrompt(sourceURL, markdown, category))
 	if err != nil {
 		return nil, fmt.Errorf("deepseek: %w", err)
 	}
 	result, err := decodeExtraction(rawText)
 	if err != nil {
-		return &Extraction{RawResponse: rawText}, fmt.Errorf("deepseek: %w", err)
+		return &Extraction{RawResponse: rawText, Usage: usage}, fmt.Errorf("deepseek: %w", err)
 	}
-	return &Extraction{Result: result, RawResponse: rawText}, nil
+	return &Extraction{Result: result, RawResponse: rawText, Usage: usage}, nil
 }
 
 // ExtractRates реализует RatesExtractor (курсы).
 func (d *DeepSeek) ExtractRates(ctx context.Context, markdown, notes string) (*RatesExtraction, error) {
-	rawText, err := d.chat(ctx, ratesSystemPrompt+ratesSchemaText, ratesUserPrompt(markdown, notes))
+	rawText, _, err := d.chat(ctx, ratesSystemPrompt+ratesSchemaText, ratesUserPrompt(markdown, notes))
 	if err != nil {
 		return nil, fmt.Errorf("deepseek: %w", err)
 	}
@@ -176,4 +186,30 @@ func (d *DeepSeek) ExtractRates(ctx context.Context, markdown, notes string) (*R
 		return &RatesExtraction{RawResponse: rawText}, fmt.Errorf("deepseek: %w", err)
 	}
 	return &RatesExtraction{Result: result, RawResponse: rawText}, nil
+}
+
+// ExtractLinks реализует LinksExtractor (объединённый discovery по нескольким категориям).
+func (d *DeepSeek) ExtractLinks(ctx context.Context, markdown string, categories []model.Category, hints map[model.Category]string) (*LinksExtraction, error) {
+	rawText, _, err := d.chat(ctx, linksSystemPrompt+linksSchemaText, linksUserPrompt(markdown, categories, hints))
+	if err != nil {
+		return nil, fmt.Errorf("deepseek: %w", err)
+	}
+	result, err := decodeLinks(rawText)
+	if err != nil {
+		return &LinksExtraction{RawResponse: rawText}, fmt.Errorf("deepseek: %w", err)
+	}
+	return &LinksExtraction{Result: result, RawResponse: rawText}, nil
+}
+
+// ExtractStaticProducts реализует StaticSourceExtractor (kind='static_source').
+func (d *DeepSeek) ExtractStaticProducts(ctx context.Context, markdown string, category model.Category, notes string) (*Extraction, error) {
+	rawText, usage, err := d.chat(ctx, staticSourceSystemPrompt+staticSourceSchemaText, staticSourceUserPrompt(markdown, category, notes))
+	if err != nil {
+		return nil, fmt.Errorf("deepseek: %w", err)
+	}
+	result, err := decodeExtraction(rawText)
+	if err != nil {
+		return &Extraction{RawResponse: rawText, Usage: usage}, fmt.Errorf("deepseek: %w", err)
+	}
+	return &Extraction{Result: result, RawResponse: rawText, Usage: usage}, nil
 }

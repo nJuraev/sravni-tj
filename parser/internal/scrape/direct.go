@@ -6,6 +6,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -60,7 +61,12 @@ func (d *Direct) get(ctx context.Context, rawURL string, limit int64) (string, e
 	}
 	// UA "браузерный" — часть банковских сайтов режет ответ ботам без него.
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	// Этот же клиент обслуживает и HTML-страницы, и JSON API (array_path-
+	// источники — Арванд/ICB/SSB). Чистый "text/html,application/xhtml+xml"
+	// ловил HTTP 406 от Арванда (API стал строго валидировать Accept) —
+	// добавлен application/json + */* фолбэк, HTML-сайтам это не мешает
+	// (Accept там почти всегда игнорируется).
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
 
 	resp, err := d.client.Do(req)
 	if err != nil {
@@ -117,15 +123,74 @@ var (
 	reTag        = regexp.MustCompile(`(?s)<[^>]+>`)
 	reBlankLines = regexp.MustCompile(`\n{3,}`)
 	reSpaces     = regexp.MustCompile(`[ \t]{2,}`)
+	// reFileLink — ссылка на файл (документ/изображение/архив), не на HTML-
+	// страницу продукта — шум для discovery (никогда не страница продукта) и
+	// для ctaTextOnly (см. ниже). Проверяется по хвосту пути ДО query/fragment.
+	reFileLink = regexp.MustCompile(`(?i)\.(pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|svg|webp|ico|bmp|zip|rar|7z|mp3|mp4|avi|mov)(\?|#|$)`)
+	// reNoiseScheme — телефон/мессенджер-схемы в href (banner "Позвоните нам",
+	// WhatsApp-виджеты и т.п.) — для discovery шум: никогда не страница продукта.
+	reNoiseScheme = regexp.MustCompile(`(?i)^(tel|mailto|sms|whatsapp):`)
 )
 
+// noiseHosts — хосты соцсетей/мессенджеров, которые баннерами/футерами
+// попадают в extractLinksOnly, но никогда не ведут на страницу продукта.
+var noiseHosts = map[string]bool{
+	"wa.me": true, "t.me": true, "telegram.me": true,
+	"facebook.com": true, "instagram.com": true, "youtube.com": true,
+	"twitter.com": true, "x.com": true, "vk.com": true,
+	"linkedin.com": true, "ok.ru": true,
+}
+
+// isNoiseHref — используется только discovery-путём (extractLinksOnly):
+// телефон/мессенджер-схемы и соцсети/мессенджеры по хосту. Относительные
+// href пропускаем без host-проверки — их отсеет resolveAndFilter в
+// discover.go (сравнение с зарегистрированным доменом банка).
+func isNoiseHref(href string) bool {
+	if reNoiseScheme.MatchString(href) {
+		return true
+	}
+	u, err := url.Parse(href)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	return noiseHosts[host]
+}
+
+// ctaTextOnly — тексты кнопок-действий (заявка/оформление), которые
+// повторяются на КАЖДОЙ карточке/блоке продукта и сами по себе не несут
+// различающей информации — в отличие от текста меню, где текст ссылки и есть
+// нужные данные (название продукта). Держим их как обычный текст (без
+// markdown-ссылки) в парсинге ПРОДУКТОВ: иначе AI видит N визуально разных
+// ссылок на разные url и может счесть карточки отдельными продуктами вместо
+// одного продукта с несколькими тарифами (см. amonatbonk.tj/ru/personal/
+// hypothec/ — 6 карточек «Ипотечный кредит N», у каждой своя кнопка
+// «Оформить»/«Подробнее» на СВОЮ tj-подстраницу). discovery эту функцию не
+// использует вообще (extractLinksOnly ниже) — там наоборот, ссылка это и есть
+// искомые данные, включая на страницы-карточки.
+var ctaTextOnly = map[string]bool{
+	"оформить":         true,
+	"оформить заявку":  true,
+	"подать заявку":    true,
+	"подать заявление": true,
+	"отправить заявку": true,
+	"заявка":           true,
+	"подробнее":        true,
+	"узнать больше":    true,
+	"дархост фиристодан": true, // тадж. «отправить заявку»
+	"дархост намоед":     true, // тадж. «подать заявку»
+}
+
 // linkify заменяет <a href="URL">текст</a> на markdown-ссылку [текст](URL)
-// ДО общей зачистки тегов ниже. Критично для discovery (internal/discover):
-// без этого href пропадает вместе с тегом целиком, и AI, видя только голый
-// текст пункта меню без единой ссылки, вынужден УГАДЫВАТЬ URL по паттерну
-// имени — поймано вживую на eskhata.com: 7 "найденных" ссылок на кредиты
-// оказались несуществующими (404), AI их придумал. Относительные href не
-// резолвим — resolveAndFilter в discover.go уже это делает.
+// ДО общей зачистки тегов ниже — используется ТОЛЬКО обычным парсингом
+// ПРОДУКТОВ (htmlToText/Direct.Scrape/Browser.Scrape), не discovery (см.
+// extractLinksOnly). Без этого для страниц, где описание продукта САМО
+// содержит осмысленную ссылку, текст ссылки терялся бы без контекста —
+// оставляем URL на случай, если он всё же пригодится модели.
+//
+// Исключение — ctaTextOnly (кнопки «Оформить»/«Подробнее» и т.п.): для них
+// URL сознательно ОТБРАСЫВАЕТСЯ, остаётся только текст без markdown-ссылки —
+// см. комментарий у ctaTextOnly.
 func linkify(s string) string {
 	return reAnchor.ReplaceAllStringFunc(s, func(m string) string {
 		sub := reAnchor.FindStringSubmatch(m)
@@ -135,11 +200,56 @@ func linkify(s string) string {
 		}
 		href = strings.TrimSpace(href)
 		text := strings.TrimSpace(reSpaces.ReplaceAllString(reTag.ReplaceAllString(sub[3], " "), " "))
-		if href == "" || text == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "javascript:") {
+		if text == "" {
 			return " "
+		}
+		if href == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "javascript:") || ctaTextOnly[strings.ToLower(text)] {
+			return " " + text + " "
 		}
 		return " [" + text + "](" + href + ") "
 	})
+}
+
+// extractLinksOnly — вход для discovery (internal/discover): вместо полного
+// текста страницы отдаёт ТОЛЬКО список ссылок вида "[текст](url)", один на
+// строку, без окружающей прозы (новости, курсы валют, соцсети, футер-текст и
+// т.п. — discovery это всё игнорирует, зачем тратить на них токены и риск,
+// что AI отвлечётся на нерелевантный текст). Критично сохраняет href — без
+// этого AI вынужден УГАДЫВАТЬ URL по паттерну текста (поймано вживую на
+// eskhata.com: 7 «найденных» ссылок на кредиты оказались 404, AI их
+// придумал). Ссылки на файлы (reFileLink — pdf/картинки/архивы) отфильтрованы:
+// никогда не страница продукта. Относительные href не резолвим —
+// resolveAndFilter в discover.go уже это делает.
+func extractLinksOnly(raw string) string {
+	s := reCut.ReplaceAllString(raw, "\n")
+	s = reComment.ReplaceAllString(s, "")
+
+	seen := make(map[string]bool)
+	var out []string
+	for _, sub := range reAnchor.FindAllStringSubmatch(s, -1) {
+		href := sub[1]
+		if href == "" {
+			href = sub[2]
+		}
+		href = strings.TrimSpace(href)
+		text := strings.TrimSpace(reSpaces.ReplaceAllString(reTag.ReplaceAllString(sub[3], " "), " "))
+		if href == "" || text == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "javascript:") {
+			continue
+		}
+		if reFileLink.MatchString(href) {
+			continue
+		}
+		if isNoiseHref(href) {
+			continue
+		}
+		line := "[" + text + "](" + href + ")"
+		if seen[line] {
+			continue
+		}
+		seen[line] = true
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
 }
 
 // dedupMinLen — минимальная длина строки В РУНАХ (не байтах — текст в основном
@@ -150,10 +260,11 @@ const dedupMinLen = 20
 
 // htmlToText — readability-lite без внешних зависимостей: не ищет "основной
 // контент" по DOM-скорингу (как Jina/Readability), просто снимает разметку и
-// шум (вырезает <header>/<footer>/<nav> целиком, плюс сохраняет ссылки как
-// markdown, см. linkify). Контент вне этих тегов (например невынесенное в
-// <nav> меню) режет хуже настоящего readability, но AI-экстрактор и так
-// игнорирует нерелевантный текст — здесь важно лишь не терять данные.
+// шум (вырезает <header>/<footer>/<nav> целиком — для парсинга ПРОДУКТОВ эти
+// теги никогда не несут условий продукта), плюс сохраняет ссылки как markdown
+// (см. linkify). Используется ТОЛЬКО обычным парсингом продуктов
+// (Direct.Scrape/Browser.Scrape) — discovery идёт через extractLinksOnly
+// (другой вход: нужны ссылки из шапки/меню, которые здесь вырезаются).
 func htmlToText(raw string) string {
 	s := reCut.ReplaceAllString(raw, "\n")
 	s = reNoiseBlocks.ReplaceAllString(s, "\n")
@@ -176,6 +287,25 @@ func htmlToText(raw string) string {
 	}
 	out = dedupLines(out)
 	return reBlankLines.ReplaceAllString(strings.Join(out, "\n"), "\n\n")
+}
+
+// ScrapeForLinks — вход для discovery (internal/discover): вместо полного
+// текста страницы (htmlToText) отдаёт ТОЛЬКО список ссылок вида
+// "[текст](url)" (см. extractLinksOnly) — ни прозы, ни курсов валют, ни
+// футера, ни <header>/<nav> НЕ вырезаны (наоборот, специально не трогаем —
+// именно там части банков держат меню каталога, см. историю правки). Работает
+// поверх ScrapeRaw любого Scraper (Direct/Browser/Firecrawl), поэтому не
+// завязан на конкретную реализацию.
+func ScrapeForLinks(ctx context.Context, s Scraper, url string) (string, error) {
+	raw, err := s.ScrapeRaw(ctx, url)
+	if err != nil {
+		return "", err
+	}
+	text := strings.TrimSpace(extractLinksOnly(raw))
+	if text == "" {
+		return "", fmt.Errorf("scrape: пустой список ссылок после очистки (discovery)")
+	}
+	return text, nil
 }
 
 // dedupLines вырезает повторные вхождения длинных строк внутри одной страницы.

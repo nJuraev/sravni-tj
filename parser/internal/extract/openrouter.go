@@ -45,12 +45,12 @@ func NewOpenRouter(apiKey, modelName string, maxTokens int, client *http.Client)
 }
 
 // Extract реализует AIExtractor.
-func (o *OpenRouter) Extract(ctx context.Context, markdown string, category model.Category) (*Extraction, error) {
+func (o *OpenRouter) Extract(ctx context.Context, sourceURL, markdown string, category model.Category) (*Extraction, error) {
 	reqBody := openAIRequest{
 		Model: o.model,
 		Messages: []openAIMessage{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt(markdown, category)},
+			{Role: "user", Content: userPrompt(sourceURL, markdown, category)},
 		},
 		Temperature: 0,
 		// Ограничиваем вывод, иначе OpenRouter резервирует максимум модели и

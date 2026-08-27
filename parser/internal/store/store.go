@@ -86,6 +86,28 @@ type Store interface {
 	// TouchInstruction обновляет last_run_at инструкции после обработки.
 	TouchInstruction(ctx context.Context, instructionID int64, at time.Time) error
 
+	// StaticSourceInstructions читает активные инструкции
+	// (bank_parse_instructions WHERE kind='static_source' AND is_active=true) —
+	// URL уже точно известен (не нужен AI для поиска ссылок), но страница
+	// содержит несколько отдельных продуктов целиком (см. discover.go
+	// registerStaticSources и parser.go — extract_mode='static_source').
+	StaticSourceInstructions(ctx context.Context) ([]model.DiscoveryInstruction, error)
+
+	// SequentialIDInstructions читает активные инструкции
+	// (bank_parse_instructions WHERE kind='sequential_ids' AND is_active=true) —
+	// детальные страницы продуктов на числовых id ({start_url}/1, /2, ...),
+	// без каталога-со-ссылками и без настоящего HTTP 404 (см. discover.go
+	// processSequentialIDs).
+	SequentialIDInstructions(ctx context.Context) ([]model.DiscoveryInstruction, error)
+
+	// UpsertStaticSource регистрирует источник bank_parse_instructions
+	// (kind='static_source') в bank_source_urls БЕЗ обращения к AI — в отличие
+	// от UpsertSourceURL, ТАКЖЕ проставляет notes (постраничная подсказка для
+	// лёгкого экстрактора, см. extract.StaticSourceExtractor) и
+	// extract_mode='static_source' (сигнал parser.go использовать его вместо
+	// обычного Extract()).
+	UpsertStaticSource(ctx context.Context, bankID int64, category model.Category, url, scraper, notes string) (bool, error)
+
 	// RatesInstructions читает активные инструкции курсов
 	// (bank_parse_instructions WHERE kind='rates' AND is_active=true).
 	// Category в таких строках всегда NULL (в результат не попадает).

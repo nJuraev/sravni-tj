@@ -28,7 +28,10 @@ func stringListSchema(description string) map[string]any {
 	}
 }
 
-func responseSchema() map[string]any {
+// productItemSchema — схема одного объекта products[] (общая для
+// responseSchema() и staticSourceSchema() — оба ждут один и тот же контракт
+// ParsedProduct, различаются только тем, разрешён ли рядом catalog-режим).
+func productItemSchema() map[string]any {
 	// Nullable-поля описываются как type-массив ["<type>","null"]
 	// (JSON Schema draft 2020-12), что поддерживают и Gemini, и OpenAI-совместимые.
 	tierItem := map[string]any{
@@ -102,6 +105,10 @@ func responseSchema() map[string]any {
 		},
 	}
 
+	return product
+}
+
+func responseSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -112,7 +119,7 @@ func responseSchema() map[string]any {
 				"minItems":    0,
 				"maxItems":    30,
 				"description": "Все продукты с полными условиями, найденные ПРЯМО на странице.",
-				"items":       product,
+				"items":       productItemSchema(),
 			},
 			"product_links": map[string]any{
 				"type":        "array",
@@ -128,6 +135,28 @@ func responseSchema() map[string]any {
 						"section": map[string]any{"type": []string{"string", "null"}, "description": "Заголовок раздела меню над ссылкой (подсказка подкатегории) или null."},
 					},
 				},
+			},
+		},
+	}
+}
+
+// staticSourceSchema — как responseSchema(), но БЕЗ "product_links" в
+// принципе (catalog-режим для static_source-источников структурно
+// невозможен — URL уже точно известен, ссылок искать не нужно) и с
+// products.minItems=1 (контракт: на этой странице ГАРАНТИРОВАННО есть хотя
+// бы один продукт — см. extract.StaticSourceExtractor).
+func staticSourceSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"products"},
+		"properties": map[string]any{
+			"products": map[string]any{
+				"type":        "array",
+				"minItems":    1,
+				"maxItems":    30,
+				"description": "Все отдельные продукты на этой странице (заведомо больше одного, см. подсказку).",
+				"items":       productItemSchema(),
 			},
 		},
 	}

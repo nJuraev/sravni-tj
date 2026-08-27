@@ -79,18 +79,24 @@ type openAIResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	// Usage — токены вызова (OpenAI-совместимое поле, есть у DeepSeek/OpenRouter/Qwen).
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
 }
 
 // Extract реализует AIExtractor.
-func (q *Qwen) Extract(ctx context.Context, markdown string, category model.Category) (*Extraction, error) {
+func (q *Qwen) Extract(ctx context.Context, sourceURL, markdown string, category model.Category) (*Extraction, error) {
 	reqBody := openAIRequest{
 		Model: q.model,
 		Messages: []openAIMessage{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt(markdown, category)},
+			{Role: "user", Content: userPrompt(sourceURL, markdown, category)},
 		},
 		Temperature: 0,
 		ResponseFormat: responseFormat{

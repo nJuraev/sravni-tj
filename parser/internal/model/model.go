@@ -41,6 +41,8 @@ type SourceTask struct {
 	ArrayPath        *string      // array-split режим: путь (jsonpath.Resolve) до массива продуктов в JSON-ответе; nil — выключен
 	Scraper          string       // bank_source_urls.scraper: "" — свой скрейпер (дефолт), "firecrawl" — источник требует JS-рендер
 	LastMarkdownHash *string      // bank_source_urls.last_markdown_hash — хэш markdown с прошлого успешного прогона; nil — кэша ещё нет
+	Notes            *string      // bank_source_urls.notes — курируемая подсказка AI ДЛЯ ЭТОЙ страницы (см. миграцию add_notes_to_bank_source_urls); nil — нет подсказки
+	ExtractMode      string       // bank_source_urls.extract_mode: "" — обычный Extract(), "static_source" — лёгкий StaticSourceExtractor (см. миграцию add_static_source_kind)
 }
 
 // LangURLRule — как получить tj-версию страницы из её ru-версии, на уровне

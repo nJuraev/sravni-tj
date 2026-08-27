@@ -26,8 +26,12 @@ const ModeBrowser = "browser"
 const browserPageTimeout = 45 * time.Second
 
 // browserSettle — пауза после Navigate, чтобы клиентский JS успел отрендерить
-// DOM (курсы/каталог часто подгружаются XHR уже после load).
-const browserSettle = 2 * time.Second
+// DOM (курсы/каталог часто подгружаются XHR уже после load). Было 2с — для
+// части Angular/Next SPA (напр. Тавхидбанк) не хватало, поднято до 4с.
+// Простое ожидание, без wait-for-selector/scroll/click — если этого всё
+// равно не хватит на конкретном сайте, нужна более глубокая доработка
+// отдельной задачей.
+const browserSettle = 4 * time.Second
 
 // Browser — Scraper поверх удалённого headless Chrome по CDP (DevTools
 // Protocol). В отличие от Direct умеет выполнять JS — нужен для SPA-страниц

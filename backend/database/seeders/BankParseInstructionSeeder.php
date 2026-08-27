@@ -71,14 +71,21 @@ class BankParseInstructionSeeder extends Seeder
             'notes' => 'Ссылки на продукты в ШАПКЕ → подменю «Кредитные продукты». Только физлица.',
         ],
         [
-            // Депозит один, на поддомене — сама страница продукта.
-            // Discovery увидит продукт (не ссылки) и зарегистрирует этот URL источником.
+            // Проверено вживую: deposit.dc.tj — НЕ один продукт (старое
+            // предположение было неверным) и НЕ каталог со ссылками — это
+            // одна страница, где ЦЕЛИКОМ показаны СРАЗУ 4-5 разных вкладов
+            // («Дурахшон», «Шарики боэътимод», депозит для легализации
+            // денежных средств, «Пурсамар» + безымянный базовый блок), у
+            // каждого своя валюта/срок/ставка/мин.сумма. kind=static_source:
+            // URL уже точно известен, discovery (поиск ссылок) тут не нужен
+            // вообще — см. BankParseInstructionSeeder::run() и
+            // discover.go registerStaticSources.
             'bank' => 'Душанбе Сити',
-            'kind' => 'product_discovery',
+            'kind' => 'static_source',
             'category' => 'deposit',
             'start_url' => 'https://deposit.dc.tj/',
             'menu_sections' => null,
-            'notes' => 'Это страница самого депозитного продукта (поддомен). Извлеки продукт прямо со страницы, искать ссылки не нужно.',
+            'notes' => 'На этой странице НЕСКОЛЬКО РАЗНЫХ депозитных продуктов (не тарифная сетка одного продукта) — у каждого своё название («Дурахшон», «Шарики боэътимод», депозит для легализации денежных средств, «Пурсамар» и др.), своя валюта/срок/ставка/минимальная сумма. Извлеки каждый как ОТДЕЛЬНЫЙ объект в products[].',
         ],
         [
             // Раньше AI-путь по блоку «kurspublish container» на главной.
@@ -218,15 +225,30 @@ class BankParseInstructionSeeder extends Seeder
         ],
 
         // --- Амонатбанк (amonatbonk.tj) ---
+        // Каталоги /ru/personal/loans/ и /ru/personal/deposits/ — не источник
+        // ссылок: loans/ рисует те же карточки, что и в шапке, но кнопки
+        // «Подробнее»/«Оформить» без href (JS без перехода, не <a>) — discovery
+        // с этой страницы не находит ссылок на детальные страницы вообще.
+        // deposits/ отдаёт 500 (Bitrix, undefined constant DEPOSITS). Реальный
+        // источник ссылок в обоих случаях — dropdown в ШАПКЕ главной (вкладка
+        // «Частным лицам» → пилюли «Кредиты»/«Вклады»), проверено вживую.
+        // scraper='browser': на проде в логах видно Cloudflare-защиту перед
+        // amonatbonk.tj — свой прямой HTTP-скрейпер (Direct) её не проходит,
+        // нужен полноценный JS-рендер headless Chrome. Значение наследуется
+        // discovery → discovered bank_source_urls (см. discover.go
+        // UpsertSourceURL(..., in.Scraper)), отдельно на каждый найденный URL
+        // проставлять не нужно.
         [
             'bank' => 'Амонатбанк', 'kind' => 'product_discovery', 'category' => 'credit',
-            'start_url' => 'https://amonatbonk.tj/ru/personal/loans/', 'menu_sections' => null,
-            'notes' => 'Каталог кредитов физлиц. Карточки → /ru/personal/loans/<slug>; ипотека отдельно /ru/personal/hypothec/. Исключить бизнес /ru/business/.',
+            'start_url' => 'https://amonatbonk.tj/ru/', 'menu_sections' => ['Кредиты'],
+            'notes' => 'Ссылки на кредиты бери из ШАПКИ главной (вкладка «Частным лицам» → пилюля «Кредиты», dropdown), НЕ с /ru/personal/loans/ (там карточки без ссылок на детальные страницы). В dropdown ~15 ссылок вида /ru/personal/loans/<slug> и /ru/personal/hypothec/ — включи их все, это реальные кредитные продукты для физлиц (ипотека /ru/personal/hypothec/ — тоже кредит; страничная подсказка про её тарифную сетку задана отдельно на самом источнике, см. BankSourceUrlSeeder). ИСКЛЮЧИ ровно 2 ссылки на /tj/personal/loans/ (не /ru/!): meeri-foizi-karz — это сводная таблица ставок по ВСЕМ кредитам банка, не отдельный продукт; qarzi-imtiyeznok — реальный продукт (кредит промышленности), но существует только в тадж. версии (ru отдаёт «Элемент не найден»), статус для розницы физлиц не подтверждён — не источник до отдельной проверки.',
+            'scraper' => 'browser',
         ],
         [
             'bank' => 'Амонатбанк', 'kind' => 'product_discovery', 'category' => 'deposit',
-            'start_url' => 'https://amonatbonk.tj/ru/personal/deposits/', 'menu_sections' => null,
-            'notes' => 'Каталог вкладов физлиц → /ru/personal/deposits/<slug>. Если каталог отдаёт 500 — продукты есть в меню главной.',
+            'start_url' => 'https://amonatbonk.tj/ru/', 'menu_sections' => ['Вклады'],
+            'notes' => 'Ссылки на вклады бери из ШАПКИ главной (вкладка «Частным лицам» → пилюля «Вклады», dropdown), НЕ с /ru/personal/deposits/ (страница отдаёт 500). В dropdown 6 ссылок вида /ru/personal/deposits/<slug> — все включить, это реальные вклады физлиц. Ссылку на сам каталог (/ru/personal/deposits/) внутри dropdown игнорировать — не продукт.',
+            'scraper' => 'browser',
         ],
         [
             // Курс на главной — пустые <span id="ambRowUSDBUY"> и т.п.,
@@ -255,17 +277,25 @@ class BankParseInstructionSeeder extends Seeder
         ],
 
         // --- Ориёнбонк (oriyonbonk.tj) — каталог на одной странице, без URL продуктов ---
+        // Cloudflare отдаёт 403/challenge на прямой GET (та же причина, что и
+        // у rates ниже) — проверено вживую: со scraper='browser' обе
+        // catalog-страницы отдают полный inline-контент (проверено на
+        // credit: 7+ продуктов с суммой/сроком/валютой). На отдельный общий
+        // start_url (главная) НЕ переводим — обе страницы САМИ ПО СЕБЕ уже
+        // полны (см. Products>0 fallback discover.go), объединять смысла нет.
         [
             // Без /ru/ — дефолтная ТАДЖИКСКАЯ версия сайта. Канон должен быть ru
             // (lang_url_rule на банке сам выводит tj отсюда).
             'bank' => 'Ориёнбонк', 'kind' => 'product_discovery', 'category' => 'credit',
             'start_url' => 'https://oriyonbonk.tj/ru/individuals/loans', 'menu_sections' => null,
             'notes' => 'Каталог на ОДНОЙ странице, продукты раскрываются inline, отдельных URL у продуктов НЕТ — извлеки все продукты прямо со страницы (не ищи ссылки).',
+            'scraper' => 'browser',
         ],
         [
             'bank' => 'Ориёнбонк', 'kind' => 'product_discovery', 'category' => 'deposit',
             'start_url' => 'https://oriyonbonk.tj/ru/individuals/deposits', 'menu_sections' => null,
             'notes' => 'Каталог на одной странице, продукты inline, отдельных URL нет — извлеки продукты прямо со страницы.',
+            'scraper' => 'browser',
         ],
         [
             // Cloudflare отдаёт 403 на прямой GET (challenge-страница) — свой
@@ -413,15 +443,21 @@ class BankParseInstructionSeeder extends Seeder
         ],
 
         // --- Актив Банк (activbank.tj) — server-rendered ---
+        // Проверено вживую: главная (Direct, TLS уже покрыт aia.go — см.
+        // scrape/aia.go, отдельного scraper='browser' не нужно) одним
+        // запросом отдаёт ссылки И на кредиты, И на вклады — общий start_url
+        // вместо двух отдельных catalog-страниц, попадает в объединённый
+        // discovery (см. discover.go processGroup): один скрейп+один
+        // AI-вызов на банк вместо двух с разным входом.
         [
             'bank' => 'Актив', 'kind' => 'product_discovery', 'category' => 'credit',
-            'start_url' => 'https://activbank.tj/credits/chastnym-klientam', 'menu_sections' => null,
-            'notes' => 'Каталог физлиц; карточки → /credit/<slug>. Бизнес /credits/biznesu исключить.',
+            'start_url' => 'https://activbank.tj/', 'menu_sections' => ['Кредиты'],
+            'notes' => 'Ссылки на кредиты бери из ШАПКИ главной, dropdown «Кредиты» (не с /credits/chastnym-klientam — это тоже рабочий каталог, но незачем скрейпить дважды). Карточки → /credit/<slug>. Бизнес (/credits/biznesu и подобные) исключить.',
         ],
         [
             'bank' => 'Актив', 'kind' => 'product_discovery', 'category' => 'deposit',
-            'start_url' => 'https://activbank.tj/deposits', 'menu_sections' => null,
-            'notes' => 'Карточки → /deposit/<slug>. Бизнес-вклады исключить.',
+            'start_url' => 'https://activbank.tj/', 'menu_sections' => ['Вклады'],
+            'notes' => 'Ссылки на вклады бери из ШАПКИ главной, dropdown «Вклады». Карточки → /deposit/<slug>. Бизнес-вклады исключить.',
         ],
         [
             'bank' => 'Актив', 'kind' => 'rates', 'category' => null,
@@ -451,15 +487,31 @@ class BankParseInstructionSeeder extends Seeder
 
         // --- Коммерцбанк Таджикистана (cbt.tj) — JS-рендер, свой скрейпер не читает ---
         [
-            'bank' => 'Коммерц', 'kind' => 'product_discovery', 'category' => 'credit',
-            'start_url' => 'https://cbt.tj/retail/credits/', 'menu_sections' => null,
-            'notes' => 'Каталог физлиц; карточки → /retail/credits/<slug>. Бизнес /entity/ исключить.',
+            // Раньше product_discovery по /retail/credits/ (каталог со slug-ссылками) —
+            // сайт переехал: каталог теперь www.cbt.tj/credits (БЕЗ ссылок на детальные
+            // страницы и БЕЗ процентной ставки — только сумма/срок тизером), реальные
+            // условия — на www.cbt.tj/credits/<id>, id ЧИСЛОВОЙ (1,2,3,...), не slug.
+            // Проверено вживую (headless): id=1..N — разные продукты (тот же порядок,
+            // что на каталоге), несуществующий id НЕ отдаёт HTTP 404 (SPA всегда 200,
+            // одна и та же пустая обёртка) — discover.go определяет "промах" по
+            // содержимому (сравнение с пробником id=0), не по коду ответа. kind
+            // sequential_ids перебирает id и сам регистрирует источники в
+            // bank_source_urls — обычный AI-discovery тут не подходит (ссылок для
+            // AI на странице нет вообще).
+            'bank' => 'Коммерц', 'kind' => 'sequential_ids', 'category' => 'credit',
+            'start_url' => 'https://www.cbt.tj/credits', 'menu_sections' => null,
+            'notes' => null,
             'scraper' => 'browser',
         ],
         [
-            'bank' => 'Коммерц', 'kind' => 'product_discovery', 'category' => 'deposit',
-            'start_url' => 'https://cbt.tj/retail/deposit/', 'menu_sections' => null,
-            'notes' => 'Каталог → /retail/deposit/<slug> (deposit в ед. числе).',
+            // Тот же паттерн, что и credit выше (см. комментарий там): каталог
+            // www.cbt.tj/deposits теперь без ссылок/условий, детальные страницы —
+            // www.cbt.tj/deposits/<числовой id>. Проверено вживую: id=1-5 —
+            // реальные вклады («Дурахшон»/«Фаврӣ»/«V.I.P»/«Орзу»/«АВФ»), id=0/6+ —
+            // пустая обёртка (промах).
+            'bank' => 'Коммерц', 'kind' => 'sequential_ids', 'category' => 'deposit',
+            'start_url' => 'https://www.cbt.tj/deposits', 'menu_sections' => null,
+            'notes' => null,
             'scraper' => 'browser',
         ],
         [
@@ -498,9 +550,13 @@ class BankParseInstructionSeeder extends Seeder
             'notes' => 'Один продукт «Цифровой кредит» на поддомене-лендинге, каталога нет — извлеки продукт прямо со страницы.',
         ],
         [
+            // Direct отдавал пустой список ссылок (JS-рендер) — проверено
+            // вживую: со scraper='browser' находятся реальные карточки
+            // (/clients/deposits/reliable|child|commutative).
             'bank' => 'Фридом', 'kind' => 'product_discovery', 'category' => 'deposit',
             'start_url' => 'https://www.freedombank.tj/clients/deposits', 'menu_sections' => null,
             'notes' => 'Каталог; карточки → /clients/deposits/<slug>.',
+            'scraper' => 'browser',
         ],
         [
             'bank' => 'Фридом', 'kind' => 'rates', 'category' => null,
@@ -520,15 +576,22 @@ class BankParseInstructionSeeder extends Seeder
         ],
 
         // --- Хумо Бонк (humo.tj) ---
+        // Раньше считали каталогом с реальными детальными URL (/ru/credit|
+        // deposit/<slug>) — проверено ЗАНОВО вживую (браузер, дождались
+        // рендера): сайт сменил структуру, карточки продуктов теперь чисто
+        // JS (кнопки без href на подстраницы, в интерактивном дереве страницы
+        // ТОЛЬКО ссылки шапки/футера) — обычный discovery тут структурно не
+        // может сработать. kind=static_source: URL уже точно известен,
+        // AI на поиск ссылок не тратим вообще.
         [
-            'bank' => 'Хумо', 'kind' => 'product_discovery', 'category' => 'credit',
+            'bank' => 'Хумо', 'kind' => 'static_source', 'category' => 'credit',
             'start_url' => 'https://www.humo.tj/ru/credit', 'menu_sections' => null,
-            'notes' => 'Каталог; карточки → /ru/credit/<slug>. Смешаны физ/бизнес — брать только физлиц.',
+            'notes' => 'Это НЕ каталог со ссылками — кнопки карточек JS-заглушки без реального href на подстраницы. На странице целиком показаны несколько РАЗНЫХ кредитов для физлиц (смешаны с бизнес — их пропускай) — извлеки каждый как отдельный объект в products[].',
         ],
         [
-            'bank' => 'Хумо', 'kind' => 'product_discovery', 'category' => 'deposit',
+            'bank' => 'Хумо', 'kind' => 'static_source', 'category' => 'deposit',
             'start_url' => 'https://www.humo.tj/ru/deposit', 'menu_sections' => null,
-            'notes' => 'Каталог → /ru/deposit/<slug>.',
+            'notes' => 'Это НЕ каталог со ссылками — кнопки карточек JS-заглушки без реального href на подстраницы. На странице целиком показаны несколько РАЗНЫХ вкладов для физлиц — извлеки каждый как отдельный объект в products[].',
         ],
         [
             // Раньше AI-путь ("server-rendered таблица") — сайт переехал на
@@ -570,6 +633,12 @@ class BankParseInstructionSeeder extends Seeder
     public function run(): void
     {
         $applied = 0;
+        // Синхронизация: id каждой применённой строки — чтобы после цикла
+        // удалить всё, что было убрано из $this->rules (иначе updateOrInsert
+        // сам по себе НИКОГДА не удаляет — правило, убранное из массива,
+        // молча остаётся активной строкой в БД навсегда при повторном
+        // db:seed на уже засеянной базе).
+        $appliedIds = [];
 
         foreach ($this->rules as $r) {
             $bankId = DB::table('banks')
@@ -598,9 +667,29 @@ class BankParseInstructionSeeder extends Seeder
                     'created_at' => now(),
                 ],
             );
+
+            $id = DB::table('bank_parse_instructions')
+                ->where('bank_id', $bankId)
+                ->where('kind', $r['kind'])
+                ->when(
+                    $r['category'] === null,
+                    fn ($q) => $q->whereNull('category'),
+                    fn ($q) => $q->where('category', $r['category']),
+                )
+                ->value('id');
+            if ($id !== null) {
+                $appliedIds[] = $id;
+            }
             $applied++;
         }
 
-        $this->command?->info("BankParseInstructionSeeder: применено правил — {$applied}.");
+        // Защита от случайного полного сноса таблицы: удаляем "осиротевшие"
+        // строки, только если цикл выше реально что-то применил.
+        $deleted = 0;
+        if (! empty($appliedIds)) {
+            $deleted = DB::table('bank_parse_instructions')->whereNotIn('id', $appliedIds)->delete();
+        }
+
+        $this->command?->info("BankParseInstructionSeeder: применено правил — {$applied}, удалено устаревших строк — {$deleted}.");
     }
 }

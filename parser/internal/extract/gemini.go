@@ -67,10 +67,10 @@ type geminiResponse struct {
 }
 
 // Extract реализует AIExtractor.
-func (g *Gemini) Extract(ctx context.Context, markdown string, category model.Category) (*Extraction, error) {
+func (g *Gemini) Extract(ctx context.Context, sourceURL, markdown string, category model.Category) (*Extraction, error) {
 	reqBody := geminiRequest{
 		SystemInstruction: &geminiContent{Parts: []geminiPart{{Text: systemPrompt}}},
-		Contents:          []geminiContent{{Parts: []geminiPart{{Text: userPrompt(markdown, category)}}}},
+		Contents:          []geminiContent{{Parts: []geminiPart{{Text: userPrompt(sourceURL, markdown, category)}}}},
 		GenerationConfig: geminiGenConfig{
 			ResponseMIMEType: "application/json",
 			ResponseSchema:   responseSchema(),

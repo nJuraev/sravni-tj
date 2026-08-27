@@ -59,7 +59,16 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// LinksExtractor не поддержан всеми провайдерами (см. extract.NewLinks,
+	// тот же прецедент, что и NewRates) — это НЕ фатально для discovery в
+	// целом: банки с общей start_url для credit/deposit (единственные, кому
+	// он нужен) просто идут обычным одиночным путём, как до объединения.
+	links, err := extract.NewLinks(cfg, httpClient)
+	if err != nil {
+		log.Warn("объединённый discovery для банков с общей start_url недоступен", "err", err)
+		links = nil
+	}
 
-	d := discover.New(cfg, st, scrapers, ai, log)
+	d := discover.New(cfg, st, scrapers, ai, links, log)
 	return d.Run(ctx)
 }

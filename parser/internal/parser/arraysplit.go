@@ -19,6 +19,7 @@ import (
 	"sravni/parser/internal/extract"
 	"sravni/parser/internal/jsonpath"
 	"sravni/parser/internal/model"
+	retryutil "sravni/parser/internal/retry"
 )
 
 // maxArrayElements ограничивает число элементов на один array-split источник
@@ -105,10 +106,10 @@ func (p *Parser) runArraySplit(ctx context.Context, task model.SourceTask, start
 				}
 			}
 
-			ext, err := retry(ctx, func() (*extract.Extraction, error) {
+			ext, err := retryutil.Do(ctx, func() (*extract.Extraction, error) {
 				actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
 				defer cancel()
-				return p.ai.Extract(actx, text, task.Category)
+				return p.ai.Extract(actx, sourceURL, text, task.Category)
 			})
 			if err != nil {
 				p.log.Warn("array-split: extract элемента не удался", "task_id", task.ID, "err", err)
@@ -135,7 +136,7 @@ func (p *Parser) fetchHeaderArrayByID(ctx context.Context, task model.SourceTask
 		return nil
 	}
 
-	tjRaw, err := retry(ctx, func() (string, error) {
+	tjRaw, err := retryutil.Do(ctx, func() (string, error) {
 		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
 		defer cancel()
 		return fetchWithHeader(sctx, p.httpClient, task.URL, header, tjVal)

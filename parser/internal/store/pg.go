@@ -43,7 +43,7 @@ func (s *PG) Close() {
 func (s *PG) ActiveTasks(ctx context.Context) ([]model.SourceTask, error) {
 	const q = `
 		SELECT u.id, u.bank_id, u.category, u.url, u.array_path, u.scraper,
-			u.last_markdown_hash, b.lang_url_rule_type, b.lang_url_rule_params
+			u.last_markdown_hash, u.notes, u.extract_mode, b.lang_url_rule_type, b.lang_url_rule_params
 		FROM bank_source_urls u
 		JOIN banks b ON b.id = u.bank_id
 		WHERE u.is_active = true
@@ -57,14 +57,18 @@ func (s *PG) ActiveTasks(ctx context.Context) ([]model.SourceTask, error) {
 	var tasks []model.SourceTask
 	for rows.Next() {
 		var (
-			t          model.SourceTask
-			cat        string
-			scraper    *string
-			ruleType   *string
-			ruleParams []byte // jsonb или NULL
+			t           model.SourceTask
+			cat         string
+			scraper     *string
+			extractMode *string
+			ruleType    *string
+			ruleParams  []byte // jsonb или NULL
 		)
-		if err := rows.Scan(&t.ID, &t.BankID, &cat, &t.URL, &t.ArrayPath, &scraper, &t.LastMarkdownHash, &ruleType, &ruleParams); err != nil {
+		if err := rows.Scan(&t.ID, &t.BankID, &cat, &t.URL, &t.ArrayPath, &scraper, &t.LastMarkdownHash, &t.Notes, &extractMode, &ruleType, &ruleParams); err != nil {
 			return nil, fmt.Errorf("store: scan задачи: %w", err)
+		}
+		if extractMode != nil {
+			t.ExtractMode = *extractMode
 		}
 		t.Category = model.Category(cat)
 		t.LangURLRule = decodeLangURLRule(ruleType, ruleParams)
@@ -97,14 +101,34 @@ func decodeLangURLRule(ruleType *string, params []byte) *model.LangURLRule {
 
 // DiscoveryInstructions читает активные инструкции discovery.
 func (s *PG) DiscoveryInstructions(ctx context.Context) ([]model.DiscoveryInstruction, error) {
+	return s.queryInstructionsByKind(ctx, "product_discovery")
+}
+
+// StaticSourceInstructions читает активные инструкции kind='static_source' —
+// URL уже точно известен, discovery (поиск ссылок) не нужен вообще, см.
+// discover.go registerStaticSources.
+func (s *PG) StaticSourceInstructions(ctx context.Context) ([]model.DiscoveryInstruction, error) {
+	return s.queryInstructionsByKind(ctx, "static_source")
+}
+
+// SequentialIDInstructions читает активные инструкции kind='sequential_ids' —
+// детальные страницы на числовых id ({start_url}/1, /2, ...), см.
+// discover.go processSequentialIDs.
+func (s *PG) SequentialIDInstructions(ctx context.Context) ([]model.DiscoveryInstruction, error) {
+	return s.queryInstructionsByKind(ctx, "sequential_ids")
+}
+
+// queryInstructionsByKind — общий запрос для DiscoveryInstructions и
+// StaticSourceInstructions (одинаковая форма строки, разный kind).
+func (s *PG) queryInstructionsByKind(ctx context.Context, kind string) ([]model.DiscoveryInstruction, error) {
 	const q = `
 		SELECT id, bank_id, category, start_url, menu_sections, notes, scraper
 		FROM bank_parse_instructions
-		WHERE kind = 'product_discovery' AND is_active = true
+		WHERE kind = $1 AND is_active = true
 		ORDER BY id`
-	rows, err := s.pool.Query(ctx, q)
+	rows, err := s.pool.Query(ctx, q, kind)
 	if err != nil {
-		return nil, fmt.Errorf("store: выборка инструкций discovery: %w", err)
+		return nil, fmt.Errorf("store: выборка инструкций (%s): %w", kind, err)
 	}
 	defer rows.Close()
 
@@ -113,11 +137,11 @@ func (s *PG) DiscoveryInstructions(ctx context.Context) ([]model.DiscoveryInstru
 		var (
 			in       model.DiscoveryInstruction
 			cat      string
-			sections []byte  // jsonb массив строк или NULL
+			sections []byte // jsonb массив строк или NULL
 			scraper  *string
 		)
 		if err := rows.Scan(&in.ID, &in.BankID, &cat, &in.StartURL, &sections, &in.Notes, &scraper); err != nil {
-			return nil, fmt.Errorf("store: scan инструкции: %w", err)
+			return nil, fmt.Errorf("store: scan инструкции (%s): %w", kind, err)
 		}
 		in.Category = model.Category(cat)
 		if len(sections) > 0 {
@@ -130,7 +154,7 @@ func (s *PG) DiscoveryInstructions(ctx context.Context) ([]model.DiscoveryInstru
 		out = append(out, in)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: чтение инструкций: %w", err)
+		return nil, fmt.Errorf("store: чтение инструкций (%s): %w", kind, err)
 	}
 	return out, nil
 }
@@ -149,6 +173,27 @@ func (s *PG) UpsertSourceURL(ctx context.Context, bankID int64, category model.C
 	var inserted bool
 	if err := s.pool.QueryRow(ctx, q, bankID, string(category), url, scraper).Scan(&inserted); err != nil {
 		return false, fmt.Errorf("store: upsert источника: %w", err)
+	}
+	return inserted, nil
+}
+
+// UpsertStaticSource — как UpsertSourceURL, но ТАКЖЕ проставляет notes (сюда
+// же попадает вся постраничная инструкция для StaticSourceExtractor) и
+// extract_mode='static_source' (сигнал parser.go на этапе парсинга).
+func (s *PG) UpsertStaticSource(ctx context.Context, bankID int64, category model.Category, url, scraper, notes string) (bool, error) {
+	const q = `
+		INSERT INTO bank_source_urls (bank_id, category, url, scraper, notes, extract_mode, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), 'static_source', true, now(), now())
+		ON CONFLICT (url) DO UPDATE SET
+			scraper      = NULLIF($4, ''),
+			notes        = NULLIF($5, ''),
+			extract_mode = 'static_source',
+			is_active    = true,
+			updated_at   = now()
+		RETURNING (xmax = 0) AS inserted`
+	var inserted bool
+	if err := s.pool.QueryRow(ctx, q, bankID, string(category), url, scraper, notes).Scan(&inserted); err != nil {
+		return false, fmt.Errorf("store: upsert static_source: %w", err)
 	}
 	return inserted, nil
 }

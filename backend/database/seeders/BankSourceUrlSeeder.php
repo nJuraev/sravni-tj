@@ -50,19 +50,23 @@ class BankSourceUrlSeeder extends Seeder
 
             foreach ($pairs as [$category, $item]) {
                 // Элемент — либо просто URL-строка, либо ['url'=>..., 'array_path'=>...,
-                // 'scraper'=>...]. array_path — array-split режим (см. parser/internal/
-                // parser/arraysplit.go): источник — JSON-массив продуктов целиком,
-                // array_path — путь к массиву (jsonpath.Resolve; "" — сам ответ уже
-                // массив). scraper='browser' (свой headless Chrome) или 'firecrawl'
-                // (платный фолбэк) — источник требует JS-рендер/не проходит anti-bot
-                // защиту своим скрейпером (parser/internal/scrape/direct.go);
-                // null (дефолт) — Direct.
+                // 'scraper'=>..., 'notes'=>...]. array_path — array-split режим (см.
+                // parser/internal/parser/arraysplit.go): источник — JSON-массив
+                // продуктов целиком, array_path — путь к массиву (jsonpath.Resolve;
+                // "" — сам ответ уже массив). scraper='browser' (свой headless Chrome)
+                // или 'firecrawl' (платный фолбэк) — источник требует JS-рендер/не
+                // проходит anti-bot защиту своим скрейпером (parser/internal/scrape/
+                // direct.go); null (дефолт) — Direct. notes — курируемая подсказка AI
+                // ПРО ЭТУ страницу (см. миграцию add_notes_to_bank_source_urls) —
+                // напр. что условия одного продукта разбиты на карточки по сроку.
                 $arrayPath = null;
                 $scraper = null;
+                $notes = null;
                 if (is_array($item)) {
                     $url = $item['url'] ?? '';
                     $arrayPath = $item['array_path'] ?? null;
                     $scraper = $item['scraper'] ?? null;
+                    $notes = $item['notes'] ?? null;
                 } else {
                     $url = $item;
                 }
@@ -88,6 +92,7 @@ class BankSourceUrlSeeder extends Seeder
                         'category' => $category,
                         'array_path' => $arrayPath,
                         'scraper' => $scraper,
+                        'notes' => $notes,
                         'email' => null, // адрес доставки лида задаётся позже вручную
                         'is_active' => true,
                         'last_parsed_at' => null,
@@ -115,13 +120,17 @@ class BankSourceUrlSeeder extends Seeder
                 'deposit_urls' => ['https://eskhata.com/depo/'],
             ],
             [
+                // deposit_urls убран: deposit.dc.tj переехал в
+                // BankParseInstructionSeeder (kind='static_source') — там
+                // же теперь и постраничная notes (несколько разных вкладов
+                // на одной странице, см. историю правки).
                 'slug' => 'dushanbe-city',
                 'credit_urls' => [
                     'https://credit.dc.tj/',
                     'https://credit.dc.tj/consumer/',
                     'https://ipoteka.dc.tj/',
                 ],
-                'deposit_urls' => ['https://deposit.dc.tj/'],
+                'deposit_urls' => [],
             ],
             [
                 'slug' => 'spitamen',
@@ -155,12 +164,29 @@ class BankSourceUrlSeeder extends Seeder
                 'deposit_urls' => [],
             ],
             [
+                // /ru/personal/loans/ УБРАН: карточки на странице без href
+                // («Подробнее»/«Оформить» не <a>, JS без перехода) — как
+                // прямой источник только дублирует/портит данные, которые
+                // discovery уже находит по детальным страницам из шапки
+                // (см. BankParseInstructionSeeder). /ru/personal/deposits/
+                // по той же причине не годится как discovery start_url (500),
+                // но саму строку тут убирать не нужно — её никогда и не было.
+                //
+                // hypothec: scraper='browser' — Cloudflare перед amonatbonk.tj
+                // видна в проде, Direct её не проходит. notes — на этой ОДНОЙ
+                // странице условия ОДНОГО ипотечного продукта разбиты на
+                // несколько карточек по сроку кредита (проверено вживую:
+                // «Ипотечный кредит 1/2/3» + «Условия на покупку/строительство
+                // квартиры» — 6 карточек, разные term/rate) — без подсказки AI
+                // рискует счесть их отдельными продуктами или уйти в
+                // catalog-режим (карточки ссылаются на свои /tj/-подстраницы).
                 'slug' => 'amonatbank',
-                'credit_urls' => [
-                    'https://amonatbonk.tj/ru/personal/loans/',
-                    'https://amonatbonk.tj/ru/personal/hypothec/',
-                ],
-                'deposit_urls' => ['https://amonatbonk.tj/ru/personal/deposits/'],
+                'credit_urls' => [[
+                    'url' => 'https://amonatbonk.tj/ru/personal/hypothec/',
+                    'scraper' => 'browser',
+                    'notes' => 'На этой странице ОДИН продукт — ипотечный кредит, но условия показаны несколькими карточками (Ипотечный кредит 1/2/3, условия на покупку/строительство квартиры), различающимися СРОКОМ кредита и ставкой. Это НЕ отдельные продукты — извлеки как ОДИН объект в products[] с несколькими rate_tiers (по одному на каждую карточку: term_max + rate). У карточек есть свои ссылки на подстраницы — их игнорируй, полных условий на этой странице достаточно, product_links оставь пустым.',
+                ]],
+                'deposit_urls' => [],
             ],
             [
                 // Без /ru/ — дефолтная ТАДЖИКСКАЯ версия (не ru!). Каноничный
@@ -224,9 +250,20 @@ class BankSourceUrlSeeder extends Seeder
             [
                 // cbt.tj — client-rendered JS, свой скрейпер видит пустой shell
                 // (см. BankParseInstructionSeeder).
+                //
+                // credit_urls намеренно ПУСТ: www.cbt.tj/credits — каталог-карточки
+                // БЕЗ полных условий (нет процентной ставки), реальные условия только
+                // на детальных страницах cbt.tj/credits/<id> (числовой id, НЕ slug,
+                // без каталога-со-ссылками). Обнаруживаются перебором id
+                // (kind='sequential_ids' в BankParseInstructionSeeder, см.
+                // discover.go processSequentialIDs) — этот сидер их не трогает,
+                // источники появляются/обновляются самим discovery.
                 'slug' => 'cbt',
-                'credit_urls' => [['url' => 'https://www.cbt.tj/credits', 'scraper' => 'browser']],
-                'deposit_urls' => [['url' => 'https://www.cbt.tj/deposits', 'scraper' => 'browser']],
+                'credit_urls' => [],
+                // deposit_urls тоже пуст — тот же случай, что и credit выше:
+                // каталог без условий, детали на www.cbt.tj/deposits/<id>
+                // (kind='sequential_ids' в BankParseInstructionSeeder).
+                'deposit_urls' => [],
             ],
             [
                 // SSB.tj — SPA грузит контент по AJAX, HTML-страница пустая до JS.
@@ -251,9 +288,13 @@ class BankSourceUrlSeeder extends Seeder
                 ],
             ],
             [
+                // credit_urls/deposit_urls убраны: обе переехали в
+                // BankParseInstructionSeeder (kind='static_source') — сайт
+                // сменил структуру, реальных ссылок на детальные страницы
+                // больше нет (JS-заглушки), см. историю правки там.
                 'slug' => 'humo',
-                'credit_urls' => ['https://humo.tj/ru/credit'],
-                'deposit_urls' => ['https://humo.tj/ru/deposit'],
+                'credit_urls' => [],
+                'deposit_urls' => [],
             ],
             [
                 'slug' => 'vasl',

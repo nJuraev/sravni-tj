@@ -1,4 +1,9 @@
-package parser
+// Package retry — общий транзиентный ретрай с экспоненциальным backoff,
+// разделяемый между cmd/parser (internal/parser) и cmd/discover
+// (internal/discover): оба гоняют те же классы транзиентных ошибок
+// (scrape/AI HTTP 429/5xx, сетевые обрывы, decode-ошибки вроде пустого
+// content у reasoning-моделей DeepSeek — см. extract.PromptVersion).
+package retry
 
 import (
 	"context"
@@ -25,11 +30,11 @@ var maxAttempts = func() int {
 // baseBackoff — базовая задержка экспоненциального backoff (1s → 2s → 4s).
 const baseBackoff = time.Second
 
-// retry выполняет fn с экспоненциальным backoff для транзиентных ошибок.
+// Do выполняет fn с экспоненциальным backoff для транзиентных ошибок.
 //
 // Решение о ретрае принимает retryable(err). Если ошибка несёт Retry-After
 // (HTTP 429), задержка не короче указанной (§7.2). Контекст уважается.
-func retry[T any](ctx context.Context, fn func() (T, error)) (T, error) {
+func Do[T any](ctx context.Context, fn func() (T, error)) (T, error) {
 	var lastRes T
 	var lastErr error
 

@@ -61,7 +61,15 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// Не поддержан всеми провайдерами (см. extract.NewStaticSource) — не
+	// фатально: задачи extract_mode='static_source' просто ошибутся понятным
+	// сообщением, обычные задачи парсера не затронуты.
+	staticSource, err := extract.NewStaticSource(cfg, httpClient)
+	if err != nil {
+		log.Warn("static-source-экстрактор недоступен", "err", err)
+		staticSource = nil
+	}
 
-	p := parser.New(cfg, st, scrapers, ai, httpClient, log)
+	p := parser.New(cfg, st, scrapers, ai, staticSource, httpClient, log)
 	return p.Run(ctx)
 }

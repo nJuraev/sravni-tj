@@ -19,6 +19,7 @@ import (
 	"sravni/parser/internal/config"
 	"sravni/parser/internal/extract"
 	"sravni/parser/internal/model"
+	retryutil "sravni/parser/internal/retry"
 	"sravni/parser/internal/scrape"
 	"sravni/parser/internal/store"
 	"sravni/parser/internal/validate"
@@ -26,17 +27,20 @@ import (
 
 // Parser связывает зависимости пайплайна.
 type Parser struct {
-	cfg        *config.Config
-	st         store.Store
-	scrapers   *scrape.Scrapers
-	ai         extract.AIExtractor
-	httpClient *http.Client // прямой GET для LangURLRule.Type=="header" (bypass Direct/Firecrawl-обёртки)
-	log        *slog.Logger
+	cfg          *config.Config
+	st           store.Store
+	scrapers     *scrape.Scrapers
+	ai           extract.AIExtractor
+	staticSource extract.StaticSourceExtractor // может быть nil — см. New
+	httpClient   *http.Client                  // прямой GET для LangURLRule.Type=="header" (bypass Direct/Firecrawl-обёртки)
+	log          *slog.Logger
 }
 
-// New создаёт оркестратор.
-func New(cfg *config.Config, st store.Store, scrapers *scrape.Scrapers, ai extract.AIExtractor, httpClient *http.Client, log *slog.Logger) *Parser {
-	return &Parser{cfg: cfg, st: st, scrapers: scrapers, ai: ai, httpClient: httpClient, log: log}
+// New создаёт оркестратор. staticSource может быть nil (провайдер не
+// поддержан, см. extract.NewStaticSource) — задачи с extract_mode='static_source'
+// в этом случае просто ошибаются с понятным сообщением, остальные не затронуты.
+func New(cfg *config.Config, st store.Store, scrapers *scrape.Scrapers, ai extract.AIExtractor, staticSource extract.StaticSourceExtractor, httpClient *http.Client, log *slog.Logger) *Parser {
+	return &Parser{cfg: cfg, st: st, scrapers: scrapers, ai: ai, staticSource: staticSource, httpClient: httpClient, log: log}
 }
 
 // taskOutcome — внутренний результат обработки задачи для логирования run.
@@ -161,11 +165,36 @@ func (p *Parser) runPipeline(ctx context.Context, task model.SourceTask, started
 	}
 
 	// --- Этап 2: EXTRACT (с ретраями) ---
-	ext, err := retry(ctx, func() (*extract.Extraction, error) {
-		actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
-		defer cancel()
-		return p.ai.Extract(actx, markdown, task.Category)
-	})
+	// extract_mode='static_source' (bank_parse_instructions.kind='static_source',
+	// см. миграцию add_static_source_kind): URL уже точно известен, страница
+	// держит НЕСКОЛЬКО отдельных продуктов целиком — отдельный лёгкий
+	// экстрактор без catalog-режима вообще, notes передаются явным параметром
+	// (не текстовым префиксом markdown, как ниже для обычного пути).
+	var ext *extract.Extraction
+	if task.ExtractMode == "static_source" {
+		if p.staticSource == nil {
+			return taskOutcome{status: store.RunError, errMessage: "ai_error: static-source-экстрактор недоступен (провайдер не поддержан, см. extract.NewStaticSource)"}
+		}
+		notes := ""
+		if task.Notes != nil {
+			notes = *task.Notes
+		}
+		ext, err = retryutil.Do(ctx, func() (*extract.Extraction, error) {
+			actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
+			defer cancel()
+			return p.staticSource.ExtractStaticProducts(actx, markdown, task.Category, notes)
+		})
+	} else {
+		// Курируемая подсказка ПОСЛЕ хэша (см. миграцию add_notes_to_bank_source_urls):
+		// hash/skip-if-unchanged должны реагировать на изменение страницы банка,
+		// а не на наши правки notes.
+		markdown = prependNotes(markdown, task.Notes)
+		ext, err = retryutil.Do(ctx, func() (*extract.Extraction, error) {
+			actx, cancel := context.WithTimeout(ctx, p.cfg.AITimeout)
+			defer cancel()
+			return p.ai.Extract(actx, task.URL, markdown, task.Category)
+		})
+	}
 	// Сырой ответ AI сохраняем даже при ошибке декодирования (для отладки).
 	var aiRaw string
 	if ext != nil {
@@ -295,7 +324,7 @@ func (p *Parser) persistProducts(ctx context.Context, task model.SourceTask, pro
 		}
 
 		// Этап 4: idempotent upsert с ретраями транзиентных ошибок БД.
-		_, dbErr := retry(ctx, func() (int64, error) {
+		_, dbErr := retryutil.Do(ctx, func() (int64, error) {
 			return p.st.UpsertProduct(ctx, pw)
 		})
 		if dbErr != nil {
@@ -367,7 +396,7 @@ func (p *Parser) fetchBilingual(ctx context.Context, primaryURL string, rule *mo
 	}
 
 	scraper := p.scrapers.For(scraperMode)
-	primaryMarkdown, err := retry(ctx, func() (string, error) {
+	primaryMarkdown, err := retryutil.Do(ctx, func() (string, error) {
 		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
 		defer cancel()
 		return scraper.Scrape(sctx, primaryURL)
@@ -380,7 +409,7 @@ func (p *Parser) fetchBilingual(ctx context.Context, primaryURL string, rule *mo
 	if !ok || secURL == primaryURL {
 		return primaryMarkdown, nil
 	}
-	secMarkdown, err := retry(ctx, func() (string, error) {
+	secMarkdown, err := retryutil.Do(ctx, func() (string, error) {
 		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
 		defer cancel()
 		return scraper.Scrape(sctx, secURL)
@@ -404,7 +433,7 @@ func (p *Parser) fetchHeaderBilingual(ctx context.Context, primaryURL string, ru
 		return "", fmt.Errorf("fetchHeaderBilingual: неполное правило header для задачи %d", taskID)
 	}
 
-	primaryBody, err := retry(ctx, func() (string, error) {
+	primaryBody, err := retryutil.Do(ctx, func() (string, error) {
 		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
 		defer cancel()
 		return fetchWithHeader(sctx, p.httpClient, primaryURL, header, ruVal)
@@ -416,7 +445,7 @@ func (p *Parser) fetchHeaderBilingual(ctx context.Context, primaryURL string, ru
 		return primaryBody, nil
 	}
 
-	secBody, err := retry(ctx, func() (string, error) {
+	secBody, err := retryutil.Do(ctx, func() (string, error) {
 		sctx, cancel := context.WithTimeout(ctx, p.cfg.HTTPTimeout)
 		defer cancel()
 		return fetchWithHeader(sctx, p.httpClient, primaryURL, header, tjVal)
@@ -511,6 +540,23 @@ func deriveSecondaryURL(primary string, rule *model.LangURLRule) (string, bool) 
 	default:
 		return "", false
 	}
+}
+
+// prependNotes подмешивает курируемую подсказку (bank_source_urls.notes) в
+// начало markdown перед EXTRACT — напр. предупреждает AI, что на этой
+// КОНКРЕТНОЙ странице условия одного продукта разбиты на карточки по сроку
+// кредита (см. amonatbonk.tj/ru/personal/hypothec/), а не описывают
+// несколько разных продуктов. В отличие от discover.prependHints (подсказки
+// для ПОИСКА ссылок), здесь подсказка про то, как читать условия НА странице.
+func prependNotes(markdown string, notes *string) string {
+	if notes == nil {
+		return markdown
+	}
+	note := strings.TrimSpace(*notes)
+	if note == "" {
+		return markdown
+	}
+	return "Подсказка по этой странице: " + note + "\n\n" + markdown
 }
 
 // mergeBilingual склеивает ru- и tj-версии одной страницы в один текст для
