@@ -1,7 +1,10 @@
 import { createHead } from '@unhead/vue/client'
 import { createSravniApp } from './app'
+import { initAnalytics } from './lib/analytics'
 
 const { app, router } = createSravniApp({ createHead })
+
+initAnalytics(router)
 
 // Stale tab after a deploy: route chunks are hashed filenames, and each deploy
 // replaces the previous build's assets outright (no old-version retention).
