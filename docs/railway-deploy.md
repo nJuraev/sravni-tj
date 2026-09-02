@@ -84,6 +84,7 @@ Root Directory: `frontend`. Builder: **Dockerfile** ([railway.json](../frontend/
 VITE_API_BASE_URL=https://<backend-домен>.up.railway.app/api   # публичный домен backend — для fetch из браузера после гидратации
 VITE_USE_MOCKS=false
 VITE_PUBLIC_SITE_ORIGIN=https://sravni.tj                       # для абсолютных canonical/hreflang/sitemap URL
+VITE_GA_MEASUREMENT_ID=G-XXXXXXXXXX                              # опционально: пусто → GA4 не грузится
 ```
 
 Меняются только через **пересборку** (Railway → frontend → Settings → Variables, но это build args, не runtime env — их значения фиксируются в момент `npm run build` и переопределить их после билда без ребилда нельзя).
@@ -257,7 +258,7 @@ php artisan db:seed --class=PostTopicSeeder --force
 
 1. Создать проект, добавить **PostgreSQL**.
 2. Добавить сервис **backend** из репо, Root = `backend`, задать env (см. выше), сгенерировать `APP_KEY`. Дождаться деплоя; разово выполнить `php artisan db:seed --force` (Railway → service → shell).
-3. Добавить сервис **frontend**, Root = `frontend`, задать build-переменные `VITE_API_BASE_URL` (публичный домен backend) + `VITE_USE_MOCKS=false` + `VITE_PUBLIC_SITE_ORIGIN`, и runtime-переменную `SSR_API_BASE_URL` (приватный `backend.railway.internal` — см. §3).
+3. Добавить сервис **frontend**, Root = `frontend`, задать build-переменные `VITE_API_BASE_URL` (публичный домен backend) + `VITE_USE_MOCKS=false` + `VITE_PUBLIC_SITE_ORIGIN` + опционально `VITE_GA_MEASUREMENT_ID`, и runtime-переменную `SSR_API_BASE_URL` (приватный `backend.railway.internal` — см. §3).
 4. Добавить сервис **chrome** — Deploy from Docker Image `chromedp/headless-shell:stable`, без Root Directory и без публичного домена.
 5. Добавить сервис **parser**, Root = `parser`, задать env (включая `BROWSER_CDP_URL=http://chrome.railway.internal:9222`). Проверить, что Railway распознал cron.
 6. Добавить сервис **parser-rates**, Root = `parser`, Config-as-code Path = `railway.rates.json`, задать те же env. Проверить cron (`0 3-13 * * *` UTC).
