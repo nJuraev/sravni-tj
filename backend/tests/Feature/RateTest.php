@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Bank;
 use App\Models\BankCurrencyRate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -15,6 +16,23 @@ use Tests\TestCase;
 class RateTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Замораживаем время ПОСЛЕ старта крона (config/rates.php), иначе
+        // "сегодня" в тестах плавает относительно текущего времени и может
+        // случайно уйти на день назад (см. RateController::currentRateDate).
+        Carbon::setTestNow(Carbon::parse('2026-06-14 10:00:00', config('rates.timezone')));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
 
     public function test_index_returns_latest_rate_per_group(): void
     {
@@ -103,5 +121,36 @@ class RateTest extends TestCase
         $this->getJson('/api/rates?category=atm')
             ->assertStatus(422)
             ->assertJsonValidationErrors(['category']);
+    }
+
+    public function test_before_parser_start_time_returns_yesterdays_rate(): void
+    {
+        // 07:00 Asia/Dushanbe — до старта крона (08:00, config/rates.php) — вчерашний курс.
+        Carbon::setTestNow(Carbon::parse('2026-06-14 07:00:00', config('rates.timezone')));
+
+        $bank = Bank::factory()->create();
+        BankCurrencyRate::factory()->for($bank, 'bank')->create([
+            'currency' => 'USD', 'category' => 'cash', 'buy' => 11.0, 'sell' => 11.5,
+            'rate_date' => '2026-06-13',
+        ]);
+
+        $this->getJson('/api/rates?currency=USD&category=cash')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.rate_date', '2026-06-13');
+    }
+
+    public function test_after_parser_start_time_ignores_yesterdays_rate(): void
+    {
+        // 10:00 Asia/Dushanbe — после старта крона — только курс за сегодня.
+        $bank = Bank::factory()->create();
+        BankCurrencyRate::factory()->for($bank, 'bank')->create([
+            'currency' => 'USD', 'category' => 'cash', 'buy' => 11.0, 'sell' => 11.5,
+            'rate_date' => '2026-06-13',
+        ]);
+
+        $this->getJson('/api/rates?currency=USD&category=cash')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
     }
 }

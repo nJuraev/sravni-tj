@@ -11,6 +11,7 @@ use App\Http\Resources\RateResource;
 use App\Models\BankCurrencyRate;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -68,7 +69,7 @@ class RateController extends Controller
     }
 
     /**
-     * Базовый запрос: курс на банк×валюта×категория за СЕГОДНЯ, только активные банки.
+     * Базовый запрос: курс на банк×валюта×категория за АКТУАЛЬНУЮ дату, только активные банки.
      *
      * @return Builder<BankCurrencyRate>
      */
@@ -76,11 +77,23 @@ class RateController extends Controller
     {
         return BankCurrencyRate::query()
             ->select(DB::raw('DISTINCT ON (bank_id, currency, category) bank_currency_rates.*'))
-            ->where('rate_date', now()->toDateString())
+            ->where('rate_date', $this->currentRateDate())
             ->whereHas('bank', fn (Builder $b) => $b->where('status', 'active'))
             ->orderBy('bank_id')
             ->orderBy('currency')
             ->orderBy('category')
             ->orderByDesc('rate_date');
+    }
+
+    /**
+     * До времени старта крона парсера курсов сегодняшних данных ещё нет —
+     * показываем вчерашний курс. Время/таймзона — config/rates.php.
+     */
+    private function currentRateDate(): string
+    {
+        $now = Carbon::now(config('rates.timezone'));
+        $startTime = Carbon::parse($now->toDateString().' '.config('rates.parser_start_time'), config('rates.timezone'));
+
+        return $now->lt($startTime) ? $now->subDay()->toDateString() : $now->toDateString();
     }
 }

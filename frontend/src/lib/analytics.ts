@@ -28,6 +28,16 @@ export function initAnalytics(router: Router): void {
     window.dataLayer.push(args)
   }
   window.gtag('js', new Date())
+  // No cookie banner on this site (no EEA/UK compliance obligation) — grant
+  // immediately. Without an explicit consent signal, gtag's default-deny
+  // silently drops every hit (confirmed in prod: zero /g/collect requests,
+  // even with a valid config+event queue, until this call was added).
+  window.gtag('consent', 'default', {
+    ad_storage: 'granted',
+    analytics_storage: 'granted',
+    ad_user_data: 'granted',
+    ad_personalization: 'granted',
+  })
   // send_page_view disabled: every navigation (including the first) is
   // reported explicitly via router.afterEach below, so nothing double-fires.
   window.gtag('config', GA_MEASUREMENT_ID, { send_page_view: false })
