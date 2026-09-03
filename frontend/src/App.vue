@@ -62,6 +62,13 @@ useHead({
 .app__main {
   flex: 1;
 }
+.app__route-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-6);
+}
 .page-enter-active,
 .page-leave-active {
   transition:

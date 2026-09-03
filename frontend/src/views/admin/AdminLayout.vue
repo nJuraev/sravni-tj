@@ -18,6 +18,7 @@ import {
 import {
   BusinessOutline,
   DocumentTextOutline,
+  NewspaperOutline,
   PaperPlaneOutline,
   PeopleOutline,
   LogOutOutline,
@@ -40,6 +41,7 @@ const menuOptions = computed<MenuOption[]>(() => {
   const items: MenuOption[] = [
     { label: 'Банки', key: 'admin-banks', icon: renderIcon(BusinessOutline) },
     { label: 'Заявки', key: 'admin-leads', icon: renderIcon(DocumentTextOutline) },
+    { label: 'Статьи блога', key: 'admin-articles', icon: renderIcon(NewspaperOutline) },
     { label: 'Финансовые посты', key: 'admin-finance-posts', icon: renderIcon(PaperPlaneOutline) },
   ]
   if (admin.isAdmin) {
@@ -52,6 +54,7 @@ const menuOptions = computed<MenuOption[]>(() => {
 const activeKey = computed(() => {
   const name = route.name as string | undefined
   if (name === 'admin-bank') return 'admin-banks'
+  if (name === 'admin-article' || name === 'admin-article-new') return 'admin-articles'
   return name ?? 'admin-banks'
 })
 

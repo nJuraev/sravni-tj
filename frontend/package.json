@@ -16,6 +16,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tiptap/extension-image": "^2.11.5",
+    "@tiptap/extension-link": "^2.11.5",
+    "@tiptap/pm": "^2.11.5",
+    "@tiptap/starter-kit": "^2.11.5",
+    "@tiptap/vue-3": "^2.11.5",
     "@unhead/vue": "^3.2.3",
     "@vicons/ionicons5": "^0.13.0",
     "express": "^5.2.1",

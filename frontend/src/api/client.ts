@@ -1,4 +1,8 @@
 import type {
+  ArticleCategoryListResponse,
+  ArticleListResponse,
+  ArticleQuery,
+  ArticleResponse,
   BankListResponse,
   BankResponse,
   BankReviewCreateResponse,
@@ -175,6 +179,25 @@ export const api = {
   initTelegramSubscribe(locale: Locale): Promise<TelegramSubscribeInitResponse> {
     if (USE_MOCKS) return mockTelegramSubscribeInit()
     return request<TelegramSubscribeInitResponse>(locale, '/telegram/subscribe-init', { method: 'POST' })
+  },
+
+  // Блог: без моков (USE_MOCKS) пока — новая фича, нет ни отдельного mock-датасета.
+  getArticles(locale: Locale, query: ArticleQuery = {}): Promise<ArticleListResponse> {
+    const params = new URLSearchParams()
+    if (query.category) params.set('category', query.category)
+    if (query.tag) params.set('tag', query.tag)
+    if (query.page) params.set('page', String(query.page))
+    if (query.per_page) params.set('per_page', String(query.per_page))
+    const qs = params.toString()
+    return request<ArticleListResponse>(locale, `/articles${qs ? `?${qs}` : ''}`)
+  },
+
+  getArticle(locale: Locale, slug: string): Promise<ArticleResponse> {
+    return request<ArticleResponse>(locale, `/articles/${encodeURIComponent(slug)}`)
+  },
+
+  getArticleCategories(locale: Locale): Promise<ArticleCategoryListResponse> {
+    return request<ArticleCategoryListResponse>(locale, '/article-categories')
   },
 }
 

@@ -116,6 +116,32 @@ var (
 	reHeader = regexp.MustCompile(`(?is)<header[^>]*>.*?</header>`)
 	reFooter = regexp.MustCompile(`(?is)<footer[^>]*>.*?</footer>`)
 	reNav    = regexp.MustCompile(`(?is)<nav[^>]*>.*?</nav>`)
+	// reHiddenUnconditional/reHiddenByClass вырезают контент, скрытый через
+	// style="display:none" / нативный HTML5-атрибут hidden / класс-утилиту
+	// d-none/hidden/invisible (Bootstrap/Tailwind). Найдено на amonatbonk.tj:
+	// PHP-ошибка сайта (Bitrix, "Undefined constant DSC"/TypeError + полный
+	// stack trace) рендерится целиком то в <h2 style="display:none;">, то в
+	// <div class="d-none ...">, в зависимости от страницы — невидима живым
+	// пользователям, но текстовый скрейпер CSS/классы не понимает и честно
+	// тащит стектрейс в AI, путая экстракцию (подтверждённая причина
+	// постоянных "decode extraction: EOF" на ~11 страницах банка).
+	//
+	// Style и hidden-атрибут — однозначны при любом viewport, режем всегда
+	// (reHiddenUnconditional). Класс d-none — НЕ однозначен: Bootstrap так же
+	// делает responsive show/hide ("d-none d-md-block" = скрыт на мобиле,
+	// показан от md) — поймано вживую на amonatbonk.tj: <div class="position-
+	// absolute Img d-none d-md-block ..."><img ... alt="Потребительский
+	// кредит"></div> — реально видимая на десктопе декоративная картинка, не
+	// мусор. reHiddenByClass режется в htmlToText через ReplaceAllStringFunc
+	// с проверкой на reResponsiveDisplay
+	// — если рядом есть d-{sm,md,lg,xl,xxl}-{block,flex,...}, элемент виден на
+	// каком-то брейкпоинте, не трогаем.
+	reHiddenUnconditional = compileTagRegexes(`[^>]*\bstyle\s*=\s*"[^"]*display\s*:\s*none[^"]*"|[^>]*\bhidden\b`, hiddenTagNames...)
+	reHiddenByClass       = compileTagRegexes(`[^>]*\bclass\s*=\s*"[^"]*\b(?:d-none|hidden|invisible)\b[^"]*"`, hiddenTagNames...)
+	// reResponsiveDisplay — Bootstrap-паттерн "виден от такого-то брейкпоинта"
+	// (d-sm-block, d-md-flex и т.п.). Если он есть в том же теге, что и
+	// d-none — элемент виден на части экранов, reHiddenByClass его не режет.
+	reResponsiveDisplay = regexp.MustCompile(`\bd-(?:sm|md|lg|xl|xxl)-(?:block|flex|inline|inline-block|grid|table|table-cell)\b`)
 	// RE2 (Go regexp) не умеет backreferences — кавычки-открывашка/закрывашка
 	// проверяются двумя альтернативами, а не \1.
 	reAnchor     = regexp.MustCompile(`(?is)<a\s+[^>]*?href\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
@@ -131,6 +157,23 @@ var (
 	// WhatsApp-виджеты и т.п.) — для discovery шум: никогда не страница продукта.
 	reNoiseScheme = regexp.MustCompile(`(?i)^(tel|mailto|sms|whatsapp):`)
 )
+
+// hiddenTagNames — теги, для которых собираются reHiddenUnconditional/
+// reHiddenByClass (см. var-блок выше).
+var hiddenTagNames = []string{"div", "span", "p", "pre", "h1", "h2", "h3", "h4", "h5", "h6"}
+
+// compileTagRegexes собирает по одному non-greedy regex на каждый тег:
+// <tag ATTR-PATTERN ...>.*?</tag>. Раздельные regex на тег (не одна
+// alternation-группа на все теги сразу) — та же причина, что у header/footer/nav:
+// если один тег вложен в другой того же типа набора, общий non-greedy может
+// остановиться на "чужом" закрывающем теге раньше времени.
+func compileTagRegexes(attrPattern string, tags ...string) []*regexp.Regexp {
+	out := make([]*regexp.Regexp, len(tags))
+	for i, tag := range tags {
+		out[i] = regexp.MustCompile(fmt.Sprintf(`(?is)<%s\b(?:%s)[^>]*>.*?</%s>`, tag, attrPattern, tag))
+	}
+	return out
+}
 
 // noiseHosts — хосты соцсетей/мессенджеров, которые баннерами/футерами
 // попадают в extractLinksOnly, но никогда не ведут на страницу продукта.
@@ -271,6 +314,17 @@ func htmlToText(raw string) string {
 	s = reHeader.ReplaceAllString(s, "\n")
 	s = reFooter.ReplaceAllString(s, "\n")
 	s = reNav.ReplaceAllString(s, "\n")
+	for _, re := range reHiddenUnconditional {
+		s = re.ReplaceAllString(s, "\n")
+	}
+	for _, re := range reHiddenByClass {
+		s = re.ReplaceAllStringFunc(s, func(m string) string {
+			if reResponsiveDisplay.MatchString(m) {
+				return m // виден на каком-то брейкпоинте — не трогаем
+			}
+			return "\n"
+		})
+	}
 	s = reComment.ReplaceAllString(s, "")
 	s = linkify(s)
 	s = reBlockTag.ReplaceAllString(s, "\n")

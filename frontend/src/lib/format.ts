@@ -45,6 +45,15 @@ export function formatRateRangeValue(min: number, max: number, locale: Locale): 
   return `${formatNumber(min, locale, 2)}–${formatNumber(max, locale, 2)}`
 }
 
+/** Дата публикации статьи блога: "3 сентября 2026". */
+export function formatDate(iso: string, locale: Locale): string {
+  try {
+    return new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: 'long' }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
 export interface FreshnessTag {
   label: string
   type: 'success' | 'warning' | 'error'

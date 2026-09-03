@@ -15,6 +15,7 @@ const app = express()
 let vite
 let prodTemplate
 let prodEntry
+let prodSsrManifest
 
 if (!isProd) {
   // Dev-mode SSR preview — mirrors prod's render path but reads source
@@ -31,6 +32,9 @@ if (!isProd) {
   app.use(express.static(path.resolve(root, 'dist/client'), { index: false }))
   prodTemplate = readFileSync(path.resolve(root, 'dist/client/index.html'), 'utf-8')
   prodEntry = await import('../dist/server/entry-server.js')
+  prodSsrManifest = JSON.parse(
+    readFileSync(path.resolve(root, 'dist/client/.vite/ssr-manifest.json'), 'utf-8'),
+  )
 }
 
 /** Dev reloads the module (and template) fresh per request for HMR; prod reuses the one static import. */
@@ -83,8 +87,10 @@ app.use(async (req, res) => {
     }
     const { render } = await loadEntry()
 
-    const { html, head, status } = await render(url)
-    const finalHtml = transformHtmlTemplate(head, template).replace('<!--app-html-->', html)
+    const { html, head, status, preloadLinks } = await render(url, prodSsrManifest)
+    const finalHtml = transformHtmlTemplate(head, template)
+      .replace('<!--app-html-->', html)
+      .replace('</head>', `${preloadLinks}</head>`)
 
     res.status(status).set({ 'Content-Type': 'text/html' }).end(finalHtml)
   } catch (err) {

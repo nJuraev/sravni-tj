@@ -33,7 +33,12 @@ RUN composer dump-autoload --optimize --no-dev \
 
 EXPOSE 8000
 
-# Старт: миграции + сервер. Форма exec с `sh -c` гарантирует раскрытие $PORT
-# (Railway startCommand его НЕ раскрывает, поэтому команду держим в CMD).
+# Старт: симлинк storage + миграции + сервер. Форма exec с `sh -c` гарантирует
+# раскрытие $PORT (Railway startCommand его НЕ раскрывает, поэтому команду
+# держим в CMD). storage:link — в рантайме, не в RUN на этапе сборки: до
+# старта контейнера окружение (.env/APP_KEY) недоступно (см. composer install
+# --no-scripts выше — та же причина), да и Railway Volume на storage/app/public
+# монтируется только при старте контейнера, а не во время docker build.
+# --force и на пустом месте безопасен (Laravel просто пересоздаёт линк).
 # docker-compose переопределяет это своим command.
-CMD ["sh", "-c", "php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
+CMD ["sh", "-c", "php artisan storage:link --force && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]

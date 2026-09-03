@@ -188,3 +188,55 @@ export interface AdminFinancePost {
   sent_at: string | null
   error: string | null
 }
+
+export type ArticleStatus = 'draft' | 'published'
+
+export interface AdminArticleCategory {
+  id: number
+  name_ru: string
+  name_tg: string | null
+  slug: string
+  is_active: boolean
+  articles_count?: number
+}
+
+export type ArticleCategoryPayload = Omit<AdminArticleCategory, 'id' | 'articles_count'>
+
+export interface AdminArticleTag {
+  id: number
+  name_ru: string
+  name_tg: string | null
+  slug: string
+}
+
+export type ArticleTagPayload = Omit<AdminArticleTag, 'id'>
+
+export interface AdminArticle {
+  id: number
+  title_ru: string
+  title_tg: string | null
+  slug: string
+  excerpt_ru: string | null
+  excerpt_tg: string | null
+  body_ru: string
+  body_tg: string | null
+  cover_image: string | null
+  youtube_url: string | null
+  category_id: number
+  category?: AdminArticleCategory
+  tag_ids: number[]
+  tags?: AdminArticleTag[]
+  status: ArticleStatus
+  published_at: string | null
+  telegram_sent_at: string | null
+  author_name: string | null
+  related_bank_id: number | null
+  related_product_id: number | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type ArticlePayload = Omit<
+  AdminArticle,
+  'id' | 'category' | 'tags' | 'telegram_sent_at' | 'created_at' | 'updated_at'
+>

@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Admin\ArticleCategoryController as AdminArticleCategoryController;
+use App\Http\Controllers\Admin\ArticleController as AdminArticleController;
+use App\Http\Controllers\Admin\ArticleTagController as AdminArticleTagController;
 use App\Http\Controllers\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Admin\BankController as AdminBankController;
 use App\Http\Controllers\Admin\FinancePostController as AdminFinancePostController;
@@ -7,6 +10,7 @@ use App\Http\Controllers\Admin\LeadController as AdminLeadController;
 use App\Http\Controllers\Admin\PostTopicController as AdminPostTopicController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
+use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BankController;
 use App\Http\Controllers\Api\Internal\RatesNotifyController;
 use App\Http\Controllers\Api\BankReviewController;
@@ -35,6 +39,11 @@ Route::get('/products/deposits', [ProductController::class, 'deposits']);
 Route::get('/products/installments', [ProductController::class, 'installments']);
 Route::get('/products/{product}', [ProductController::class, 'show'])
     ->whereNumber('product');
+
+// Блог (только чтение). /article-categories отдаёт активные категории для фильтра.
+Route::get('/articles', [ArticleController::class, 'index']);
+Route::get('/article-categories', [ArticleController::class, 'categories']);
+Route::get('/articles/{slug}', [ArticleController::class, 'show']);
 
 Route::get('/banks', [BankController::class, 'index']);
 Route::get('/banks/{bank}', [BankController::class, 'show'])->whereNumber('bank');
@@ -116,5 +125,17 @@ Route::prefix('admin')->group(function (): void {
             ->whereNumber('post_topic');
         Route::get('finance-posts', [AdminFinancePostController::class, 'index']);
         Route::post('finance-posts/from-source', [AdminFinancePostController::class, 'storeFromSource']);
+
+        // Блог: статьи + категории (расширяемые) + теги (расширяемые).
+        Route::post('articles/upload-image', [AdminArticleController::class, 'uploadImage']);
+        Route::post('articles/{article}/send-telegram', [AdminArticleController::class, 'sendTelegram'])
+            ->whereNumber('article');
+        Route::apiResource('articles', AdminArticleController::class)->whereNumber('article');
+        Route::apiResource('article-categories', AdminArticleCategoryController::class)
+            ->only(['index', 'store', 'update', 'destroy'])
+            ->whereNumber('article_category');
+        Route::apiResource('article-tags', AdminArticleTagController::class)
+            ->only(['index', 'store', 'update', 'destroy'])
+            ->whereNumber('article_tag');
     });
 });

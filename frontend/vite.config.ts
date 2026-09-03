@@ -27,6 +27,11 @@ export default defineConfig(({ command, mode, isSsrBuild }) => {
     // reads dist/client for static assets + template, dist/server for render().
     build: {
       outDir: isSsrBuild ? 'dist/server' : 'dist/client',
+      // Client build only — maps modules to their chunk files so entry-server
+      // can preload/stylesheet-link exactly what a given SSR render touched
+      // (route-level CSS is code-split and otherwise loads only after the
+      // client JS chunk evaluates, causing a flash of unstyled content).
+      ssrManifest: !isSsrBuild,
     },
     server: {
       host: true,

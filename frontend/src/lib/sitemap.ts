@@ -2,7 +2,7 @@ import { createAppRouter } from '@/router'
 import { createI18nInstance } from '@/i18n'
 import { api } from '@/api/client'
 import { SITE_ORIGIN } from '@/lib/siteOrigin'
-import type { Category, Product } from '@/types/api'
+import type { Article, Category, Product } from '@/types/api'
 
 interface UrlPair {
   ru: string
@@ -19,6 +19,18 @@ async function fetchAllProducts(category: Category): Promise<Product[]> {
   let page = 1
   for (;;) {
     const res = await api.getProducts('ru', { category, page, per_page: SITEMAP_PAGE_SIZE })
+    all.push(...res.data)
+    if (page >= res.pagination.total_pages) break
+    page++
+  }
+  return all
+}
+
+async function fetchAllArticles(): Promise<Article[]> {
+  const all: Article[] = []
+  let page = 1
+  for (;;) {
+    const res = await api.getArticles('ru', { page, per_page: SITEMAP_PAGE_SIZE })
     all.push(...res.data)
     if (page >= res.pagination.total_pages) break
     page++
@@ -48,22 +60,27 @@ export async function collectSitemapUrls(): Promise<UrlPair[]> {
   addNamed('home')
   addNamed('rates')
   addNamed('reviews')
+  addNamed('blog')
   for (const category of ['credit', 'deposit', 'installment']) {
     addNamed('catalog', { category })
   }
 
-  // Dynamic: the API already filters to active products/banks only.
-  const [credits, deposits, installments, banks] = await Promise.all([
+  // Dynamic: the API already filters to active products/banks/published articles only.
+  const [credits, deposits, installments, banks, articles] = await Promise.all([
     fetchAllProducts('credit'),
     fetchAllProducts('deposit'),
     fetchAllProducts('installment'),
     api.getBanks('ru'),
+    fetchAllArticles(),
   ])
   for (const p of [...credits, ...deposits, ...installments]) {
     addNamed('product', { id: p.id })
   }
   for (const b of banks.data) {
     addNamed('bank', { id: b.id })
+  }
+  for (const a of articles) {
+    addNamed('blog-article', { slug: a.slug })
   }
 
   return pairs

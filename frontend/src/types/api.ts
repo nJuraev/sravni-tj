@@ -136,6 +136,76 @@ export interface Product {
   variants?: ProductVariant[]
 }
 
+/** Категория статьи блога — расширяемый справочник (не frozen enum). */
+export interface ArticleCategory {
+  id: number
+  name_ru: string
+  name_tg: string | null
+  slug: string
+}
+
+/** Тег статьи блога — расширяемый справочник (не frozen enum). */
+export interface ArticleTag {
+  id: number
+  name_ru: string
+  name_tg: string | null
+  slug: string
+}
+
+/** Сжатая ссылка на банк/продукт из статьи (не полный Bank/Product). */
+export interface ArticleRelatedBank {
+  id: number
+  name_ru: string
+  name_tg: string | null
+}
+
+export interface ArticleRelatedProduct {
+  id: number
+  name_ru: string
+  name_tg: string | null
+  category: Category
+}
+
+export interface Article {
+  id: number
+  title_ru: string
+  title_tg: string | null
+  slug: string
+  excerpt_ru: string | null
+  excerpt_tg: string | null
+  /** HTML из редактора статьи (Tiptap) — рендерится через v-html, санитизация на бэке. */
+  body_ru: string
+  body_tg: string | null
+  cover_image: string | null
+  youtube_url: string | null
+  category: ArticleCategory
+  tags: ArticleTag[]
+  published_at: string | null
+  author_name: string | null
+  related_bank: ArticleRelatedBank | null
+  related_product: ArticleRelatedProduct | null
+}
+
+export interface ArticleQuery {
+  category?: string
+  tag?: string
+  page?: number
+  per_page?: number
+}
+
+export interface ArticleListResponse {
+  data: Article[]
+  pagination: Pagination
+}
+
+export interface ArticleResponse {
+  data: Article
+}
+
+export interface ArticleCategoryListResponse {
+  data: ArticleCategory[]
+}
+
 export interface Pagination {
   page: number
   per_page: number

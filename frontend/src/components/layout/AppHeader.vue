@@ -52,6 +52,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <RouterLink to="/credit" class="nav__link" @click="closeMenu">{{ t('nav.credit') }}</RouterLink>
         <RouterLink to="/deposit" class="nav__link" @click="closeMenu">{{ t('nav.deposit') }}</RouterLink>
         <RouterLink to="/installment" class="nav__link" @click="closeMenu">{{ t('nav.installment') }}</RouterLink>
+        <RouterLink to="/blog" class="nav__link" @click="closeMenu">{{ t('nav.blog') }}</RouterLink>
         <RouterLink to="/compare" class="nav__link nav__link--compare" @click="closeMenu">
           {{ t('nav.compare') }}
           <span v-if="compare.count" class="nav__counter">{{ compare.count }}</span>

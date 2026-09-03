@@ -59,6 +59,19 @@ const publicRoutes: RouteRecordRaw[] = [
     meta: { locale: 'ru' },
   },
   {
+    path: '/blog',
+    name: 'blog',
+    component: () => import('@/views/BlogListView.vue'),
+    meta: { locale: 'ru' },
+  },
+  {
+    path: '/blog/:slug',
+    name: 'blog-article',
+    component: () => import('@/views/BlogDetailView.vue'),
+    props: (route) => ({ slug: String(route.params.slug) }),
+    meta: { locale: 'ru' },
+  },
+  {
     path: '/otzyvy',
     name: 'reviews',
     component: () => import('@/views/ReviewFormView.vue'),
@@ -98,6 +111,14 @@ const adminRoutes: RouteRecordRaw[] = [
         path: 'finance-posts',
         name: 'admin-finance-posts',
         component: () => import('@/views/admin/FinancePostsView.vue'),
+      },
+      { path: 'articles', name: 'admin-articles', component: () => import('@/views/admin/ArticlesView.vue') },
+      { path: 'articles/new', name: 'admin-article-new', component: () => import('@/views/admin/ArticleFormView.vue') },
+      {
+        path: 'articles/:id(\\d+)',
+        name: 'admin-article',
+        component: () => import('@/views/admin/ArticleFormView.vue'),
+        props: (route) => ({ id: Number(route.params.id) }),
       },
       {
         path: 'users',

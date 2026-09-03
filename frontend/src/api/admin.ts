@@ -1,12 +1,18 @@
 import { ApiError } from './errors'
 import { API_BASE_URL } from './client'
 import type {
+  AdminArticle,
+  AdminArticleCategory,
+  AdminArticleTag,
   AdminBank,
   AdminFinancePost,
   AdminLead,
   AdminPostTopic,
   AdminProduct,
   AdminUser,
+  ArticleCategoryPayload,
+  ArticlePayload,
+  ArticleTagPayload,
   BankPayload,
   LoginResponse,
   NewsPostPayload,
@@ -40,7 +46,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: {
         Accept: 'application/json',
-        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        // FormData (image upload) sets its own multipart Content-Type + boundary.
+        ...(typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
@@ -186,5 +193,63 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     })
+  },
+
+  // Блог: статьи
+  listArticles(params: { status?: string; category_id?: number; search?: string } = {}): Promise<CollectionResponse<AdminArticle>> {
+    const qs = new URLSearchParams()
+    if (params.status) qs.set('status', params.status)
+    if (params.category_id) qs.set('category_id', String(params.category_id))
+    if (params.search) qs.set('search', params.search)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<CollectionResponse<AdminArticle>>(`/articles${suffix}`)
+  },
+  getArticle(id: number): Promise<ItemResponse<AdminArticle>> {
+    return request<ItemResponse<AdminArticle>>(`/articles/${id}`)
+  },
+  createArticle(payload: ArticlePayload): Promise<ItemResponse<AdminArticle>> {
+    return request<ItemResponse<AdminArticle>>('/articles', { method: 'POST', body: JSON.stringify(payload) })
+  },
+  updateArticle(id: number, payload: ArticlePayload): Promise<ItemResponse<AdminArticle>> {
+    return request<ItemResponse<AdminArticle>>(`/articles/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+  },
+  deleteArticle(id: number): Promise<void> {
+    return request<void>(`/articles/${id}`, { method: 'DELETE' })
+  },
+  sendArticleTelegram(id: number): Promise<ItemResponse<AdminArticle>> {
+    return request<ItemResponse<AdminArticle>>(`/articles/${id}/send-telegram`, { method: 'POST' })
+  },
+  uploadArticleImage(file: File): Promise<ItemResponse<{ url: string }>> {
+    const form = new FormData()
+    form.append('image', file)
+    return request<ItemResponse<{ url: string }>>('/articles/upload-image', { method: 'POST', body: form })
+  },
+
+  // Блог: категории
+  listArticleCategories(): Promise<CollectionResponse<AdminArticleCategory>> {
+    return request<CollectionResponse<AdminArticleCategory>>('/article-categories')
+  },
+  createArticleCategory(payload: ArticleCategoryPayload): Promise<ItemResponse<AdminArticleCategory>> {
+    return request<ItemResponse<AdminArticleCategory>>('/article-categories', { method: 'POST', body: JSON.stringify(payload) })
+  },
+  updateArticleCategory(id: number, payload: ArticleCategoryPayload): Promise<ItemResponse<AdminArticleCategory>> {
+    return request<ItemResponse<AdminArticleCategory>>(`/article-categories/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+  },
+  deleteArticleCategory(id: number): Promise<void> {
+    return request<void>(`/article-categories/${id}`, { method: 'DELETE' })
+  },
+
+  // Блог: теги
+  listArticleTags(): Promise<CollectionResponse<AdminArticleTag>> {
+    return request<CollectionResponse<AdminArticleTag>>('/article-tags')
+  },
+  createArticleTag(payload: ArticleTagPayload): Promise<ItemResponse<AdminArticleTag>> {
+    return request<ItemResponse<AdminArticleTag>>('/article-tags', { method: 'POST', body: JSON.stringify(payload) })
+  },
+  updateArticleTag(id: number, payload: ArticleTagPayload): Promise<ItemResponse<AdminArticleTag>> {
+    return request<ItemResponse<AdminArticleTag>>(`/article-tags/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+  },
+  deleteArticleTag(id: number): Promise<void> {
+    return request<void>(`/article-tags/${id}`, { method: 'DELETE' })
   },
 }

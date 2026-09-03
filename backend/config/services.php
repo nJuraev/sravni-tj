@@ -43,6 +43,9 @@ return [
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
         'rates_webhook_secret' => env('TELEGRAM_RATES_WEBHOOK_SECRET'),
         'frontend_url' => env('FRONTEND_URL', 'https://sravni.tj'),
+        // Группа для репоста опубликованных статей блога (ручной триггер из админки,
+        // см. SendArticleToTelegramJob) — отдельно от TELEGRAM_CHANNEL_ID (курсы/финпосты).
+        'articles_group_id' => env('TELEGRAM_ARTICLES_GROUP_ID'),
     ],
 
     // Те же имена переменных, что у Go-парсера (parser/internal/config) —
