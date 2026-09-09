@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NDataTable, NButton, NInput, NInputNumber, NSelect, NTag, NSpace, NModal, NCard,
@@ -197,9 +197,48 @@ const statusOptions = [
   { label: 'Скрыт', value: 'hidden' }, { label: 'Устарел', value: 'outdated' },
 ]
 
-const columns: DataTableColumns<AdminProduct> = [
+// Группа валют одного продукта — тот же ключ, что и в публичном API
+// (ProductController::dedupeToGroupRepresentatives): source_url_id, либо
+// сам продукт как единственный представитель своей группы.
+const CURRENCY_ORDER: Record<string, number> = { TJS: 0, USD: 1, EUR: 2 }
+function groupKeyOf(p: AdminProduct): string {
+  return p.source_url_id !== null ? `u:${p.source_url_id}` : `s:${p.id}`
+}
+
+type RowWithSpan = AdminProduct & { _rowSpan: number }
+
+// Перегруппировываем список так, чтобы строки одной группы шли подряд
+// (rowSpan у naive-ui схлопывает только соседние строки), не теряя общий
+// порядок, заданный бэкендом (категория → название).
+const groupedProducts = computed<RowWithSpan[]>(() => {
+  const list = products.value
+  const firstIndex = new Map<string, number>()
+  list.forEach((p, i) => {
+    const key = groupKeyOf(p)
+    if (!firstIndex.has(key)) firstIndex.set(key, i)
+  })
+  const sorted = [...list].sort((a, b) => {
+    const ka = groupKeyOf(a)
+    const kb = groupKeyOf(b)
+    if (ka !== kb) return firstIndex.get(ka)! - firstIndex.get(kb)!
+    return (CURRENCY_ORDER[a.currency] ?? 99) - (CURRENCY_ORDER[b.currency] ?? 99)
+  })
+  const spans = new Map<number, number>()
+  let i = 0
+  while (i < sorted.length) {
+    const key = groupKeyOf(sorted[i])
+    let j = i
+    while (j < sorted.length && groupKeyOf(sorted[j]) === key) j++
+    spans.set(sorted[i].id, j - i)
+    i = j
+  }
+  return sorted.map((p) => ({ ...p, _rowSpan: spans.get(p.id) ?? 1 }))
+})
+
+const columns: DataTableColumns<RowWithSpan> = [
   {
     title: 'Название', key: 'name',
+    rowSpan: (p) => p._rowSpan,
     render: (p) => h(NSpace, { align: 'center', size: 6 }, () => [
       h('strong', p.name_ru ?? p.name_tg ?? '—'),
       p.is_special ? h(NTag, { size: 'small', type: 'info', bordered: false }, () => 'спец') : null,
@@ -252,7 +291,7 @@ const columns: DataTableColumns<AdminProduct> = [
     <n-tabs v-model:value="tab" type="line" animated>
       <n-tab-pane name="products" :tab="`Продукты (${products.length})`">
         <n-card :bordered="false">
-          <n-data-table :columns="columns" :data="products" :loading="loading" :row-key="(p: AdminProduct) => p.id" />
+          <n-data-table :columns="columns" :data="groupedProducts" :loading="loading" :row-key="(p: AdminProduct) => p.id" />
         </n-card>
       </n-tab-pane>
 

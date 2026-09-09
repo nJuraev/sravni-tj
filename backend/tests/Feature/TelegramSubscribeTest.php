@@ -174,6 +174,47 @@ class TelegramSubscribeTest extends TestCase
             && str_contains($request['text'] ?? '', 'USD'));
     }
 
+    public function test_banks_callback_lists_active_banks_quoting_category(): void
+    {
+        $bank = Bank::factory()->create(['name_ru' => 'Банк Эсхата', 'status' => 'active']);
+        BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'USD', 'category' => 'cash']);
+
+        $inactiveBank = Bank::factory()->create(['name_ru' => 'Закрытый банк', 'status' => 'inactive']);
+        BankCurrencyRate::factory()->for($inactiveBank, 'bank')->create(['currency' => 'USD', 'category' => 'cash']);
+
+        $this->postCallback('rt:banks:cash', 613)->assertNoContent();
+
+        Http::assertSent(function ($request) use ($bank) {
+            $json = json_encode($request->data(), JSON_UNESCAPED_UNICODE);
+
+            return str_contains($request['text'] ?? '', 'банк')
+                && str_contains($json, 'Банк Эсхата')
+                && str_contains($json, "rt:bank:cash:{$bank->id}")
+                && ! str_contains($json, 'Закрытый банк');
+        });
+    }
+
+    public function test_bank_selected_callback_shows_all_currencies_with_credit_deposit_links(): void
+    {
+        $bank = Bank::factory()->create(['name_ru' => 'Банк Эсхата', 'status' => 'active']);
+        BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'USD', 'category' => 'cash', 'buy' => 11.5, 'sell' => 11.8]);
+        BankCurrencyRate::factory()->for($bank, 'bank')->create(['currency' => 'AED', 'category' => 'cash', 'buy' => 3.0, 'sell' => 3.1]);
+
+        $this->postCallback("rt:bank:cash:{$bank->id}", 614)->assertNoContent();
+
+        Http::assertSent(function ($request) use ($bank) {
+            $text = $request['text'] ?? '';
+            $json = json_encode($request->data());
+
+            return str_contains($text, 'Банк Эсхата')
+                && str_contains($text, 'USD')
+                && str_contains($text, 'AED') // выбранный банк — все его валюты, не только MAIN_CURRENCIES
+                && ($request['parse_mode'] ?? null) === 'HTML'
+                && str_contains($json, "/credit?bank_id%5B0%5D={$bank->id}")
+                && str_contains($json, "/deposit?bank_id%5B0%5D={$bank->id}");
+        });
+    }
+
     public function test_alerts_button_starts_currency_wizard_for_registered_user(): void
     {
         User::factory()->telegram()->create(['telegram_id' => 606, 'api_token' => 'tok-606']);

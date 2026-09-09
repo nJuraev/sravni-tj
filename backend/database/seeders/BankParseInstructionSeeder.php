@@ -250,31 +250,12 @@ class BankParseInstructionSeeder extends Seeder
             'notes' => 'Ссылки на вклады бери из ШАПКИ главной (вкладка «Частным лицам» → пилюля «Вклады», dropdown), НЕ с /ru/personal/deposits/ (страница отдаёт 500). В dropdown 6 ссылок вида /ru/personal/deposits/<slug> — все включить, это реальные вклады физлиц. Ссылку на сам каталог (/ru/personal/deposits/) внутри dropdown игнорировать — не продукт.',
             'scraper' => 'browser',
         ],
-        [
-            // Курс на главной — пустые <span id="ambRowUSDBUY"> и т.п.,
-            // заполняются JS уже после рендера (ни Direct, ни headless Chrome
-            // с ожиданием их не видели). Найден реальный источник — плоский
-            // JSON AJAX-эндпоинт того же виджета (Bitrix), без сессии/кэш-
-            // бастера, отдаёт все три вкладки сразу. individuals=физлица
-            // (cash), remittances=переводы (transfer), legal=юрлица (игнор).
-            // Детерминированно, без AI (см. model.RateRule) — notes ниже
-            // оставлены как справка про исходную страницу.
-            'bank' => 'Амонатбанк', 'kind' => 'rates', 'category' => null,
-            'start_url' => 'https://amonatbonk.tj/bitrix/templates/amonatbonk/ajax/ambApi.php', 'menu_sections' => null,
-            'notes' => 'Курсы на главной, вкладки: Физическое лицо / Юридическое лицо / Денежные переводы. cash = Физическое лицо, transfer = Денежные переводы. Игнор юрлиц и Курса НБТ.',
-            'rate_rule' => [
-                'format' => 'json_path',
-                'items' => [
-                    ['currency' => 'USD', 'category' => 'cash', 'buy_path' => 'individuals.USD.buy', 'sell_path' => 'individuals.USD.sell'],
-                    ['currency' => 'EUR', 'category' => 'cash', 'buy_path' => 'individuals.EUR.buy', 'sell_path' => 'individuals.EUR.sell'],
-                    ['currency' => 'RUB', 'category' => 'cash', 'buy_path' => 'individuals.RUB.buy', 'sell_path' => 'individuals.RUB.sell'],
-                    ['currency' => 'CNY', 'category' => 'cash', 'buy_path' => 'individuals.CNY.buy', 'sell_path' => 'individuals.CNY.sell'],
-                    ['currency' => 'USD', 'category' => 'transfer', 'buy_path' => 'remittances.USD.buy', 'sell_path' => 'remittances.USD.sell'],
-                    ['currency' => 'EUR', 'category' => 'transfer', 'buy_path' => 'remittances.EUR.buy', 'sell_path' => 'remittances.EUR.sell'],
-                    ['currency' => 'RUB', 'category' => 'transfer', 'buy_path' => 'remittances.RUB.buy', 'sell_path' => 'remittances.RUB.sell'],
-                ],
-            ],
-        ],
+        // Амонатбанк: rates-инструкция снята — виджет individuals.*.buy/sell
+        // на деле отдаёт курс НБТ (одно число, buy=sell), не собственный
+        // коммерческий курс банка. Показывать нечего — сравнение "лучший
+        // курс" требует реальных buy/sell, а не рефересного курса НБТ.
+        // Строка удаляется из bank_parse_instructions при следующем сиде
+        // (см. run() ниже — удаляет всё, что не в $this->rules).
 
         // --- Ориёнбонк (oriyonbonk.tj) — каталог на одной странице, без URL продуктов ---
         // Cloudflare отдаёт 403/challenge на прямой GET (та же причина, что и

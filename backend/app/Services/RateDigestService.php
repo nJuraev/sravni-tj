@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Models\Bank;
 use App\Models\BankCurrencyRate;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -138,6 +139,61 @@ class RateDigestService
     public function categoryLabel(string $category): string
     {
         return $category === 'cash' ? 'Обмен валют' : 'Денежные переводы';
+    }
+
+    /**
+     * Активные банки, котирующие хоть одну валюту в категории — источник кнопок
+     * "Банки" в боте.
+     *
+     * @return array<int, array{id: int, name: string}>
+     */
+    public function banksWithRates(string $category): array
+    {
+        return Bank::query()
+            ->where('status', 'active')
+            ->whereHas('currencyRates', fn (Builder $r) => $r->where('category', $category))
+            ->orderBy('name_ru')
+            ->get(['id', 'name_ru'])
+            ->map(fn (Bank $bank): array => ['id' => $bank->id, 'name' => (string) $bank->name_ru])
+            ->all();
+    }
+
+    /**
+     * Курс одного банка по всем валютам, которые он котирует в категории —
+     * по кнопке "Банки" → выбор банка в боте. Отправлять с parse_mode='HTML'.
+     *
+     * @return array{name: string, text: string}|null null, если банк неактивен или без котировок
+     */
+    public function botBankRateSummary(int $bankId, string $category): ?array
+    {
+        $bank = Bank::query()->where('id', $bankId)->where('status', 'active')->first(['id', 'name_ru']);
+
+        if ($bank === null) {
+            return null;
+        }
+
+        $rows = BankCurrencyRate::query()
+            ->select(DB::raw('DISTINCT ON (currency) bank_currency_rates.*'))
+            ->where('bank_id', $bankId)
+            ->where('category', $category)
+            ->orderBy('currency')
+            ->orderByDesc('rate_date')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return null;
+        }
+
+        $name = (string) $bank->name_ru;
+
+        $blocks = $rows->map(fn (BankCurrencyRate $row): string => '<b>'.$row->currency."</b>\n"
+            .'  Продаёт: <b>'.($row->sell !== null ? $this->formatNumber((float) $row->sell) : '—')."</b>\n"
+            .'  Покупает: <b>'.($row->buy !== null ? $this->formatNumber((float) $row->buy) : '—').'</b>')->all();
+
+        return [
+            'name' => $name,
+            'text' => '🏦 <b>'.htmlspecialchars($name).'</b> — '.mb_strtolower($this->categoryLabel($category))."\n\n".implode("\n\n", $blocks),
+        ];
     }
 
     /**

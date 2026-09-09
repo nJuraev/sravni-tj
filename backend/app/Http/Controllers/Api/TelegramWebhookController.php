@@ -157,6 +157,7 @@ class TelegramWebhookController extends Controller
             $digest->botRateSummary($category, RateDigestService::MAIN_CURRENCIES),
             [
                 'inline_keyboard' => [
+                    [['text' => '🏦 Банки', 'callback_data' => "rt:banks:{$category}"]],
                     [
                         ['text' => 'Другие валюты', 'callback_data' => "rt:more:{$category}"],
                         ['text' => $digest->categoryLabel($otherCategory), 'callback_data' => "rt:cat:{$otherCategory}"],
@@ -176,6 +177,45 @@ class TelegramWebhookController extends Controller
             $chatId,
             '💱 <b>'.$digest->categoryLabel($category)." — другие валюты</b>\n".$digest->botOtherCurrenciesTable($category),
             null,
+            true,
+            'HTML',
+        );
+    }
+
+    /** По кнопке "Банки" — список активных банков, котирующих category, кнопками. */
+    private function sendBankList(TelegramService $telegram, RateDigestService $digest, int $chatId, string $category): void
+    {
+        $banks = $digest->banksWithRates($category);
+
+        if ($banks === []) {
+            $telegram->sendMessage($chatId, 'Сейчас нет банков с курсами по этой категории.');
+
+            return;
+        }
+
+        $telegram->sendMessage($chatId, 'Выберите банк:', $this->bankKeyboard($banks, $category));
+    }
+
+    /** По выбору банка — его курс по всем валютам + ссылки на кредиты/депозиты с фильтром по этому банку. */
+    private function sendBankRate(TelegramService $telegram, RateDigestService $digest, int $chatId, string $category, int $bankId): void
+    {
+        $summary = $digest->botBankRateSummary($bankId, $category);
+
+        if ($summary === null) {
+            $telegram->sendMessage($chatId, 'Курс этого банка сейчас недоступен.');
+
+            return;
+        }
+
+        $telegram->sendMessage(
+            $chatId,
+            $summary['text'],
+            [
+                'inline_keyboard' => [[
+                    ['text' => 'Кредиты', 'url' => $this->catalogUrl('/credit', $bankId)],
+                    ['text' => 'Депозиты', 'url' => $this->catalogUrl('/deposit', $bankId)],
+                ]],
+            ],
             true,
             'HTML',
         );
@@ -290,6 +330,23 @@ class TelegramWebhookController extends Controller
 
         if (str_starts_with($data, 'rt:cat:')) {
             $this->sendRateCategory($telegram, $digest, $chatId, substr($data, 7));
+
+            return response()->noContent();
+        }
+
+        if (str_starts_with($data, 'rt:banks:')) {
+            $this->sendBankList($telegram, $digest, $chatId, substr($data, 9));
+
+            return response()->noContent();
+        }
+
+        // rt:bank:{category}:{bankId}
+        if (str_starts_with($data, 'rt:bank:')) {
+            [$category, $bankId] = array_pad(explode(':', substr($data, 8), 2), 2, null);
+
+            if ($category !== null && is_numeric($bankId)) {
+                $this->sendBankRate($telegram, $digest, $chatId, $category, (int) $bankId);
+            }
 
             return response()->noContent();
         }
@@ -496,6 +553,20 @@ class TelegramWebhookController extends Controller
     }
 
     /**
+     * @param  array<int, array{id: int, name: string}>  $banks
+     * @return array<string, mixed>
+     */
+    private function bankKeyboard(array $banks, string $category): array
+    {
+        $buttons = array_map(
+            fn (array $b): array => ['text' => $b['name'], 'callback_data' => "rt:bank:{$category}:{$b['id']}"],
+            $banks,
+        );
+
+        return ['inline_keyboard' => array_chunk($buttons, 2)];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function linkButton(string $label, string $url): array
@@ -511,5 +582,11 @@ class TelegramWebhookController extends Controller
     private function frontend(string $path): string
     {
         return rtrim((string) config('services.telegram.frontend_url'), '/').$path;
+    }
+
+    /** Ссылка на витрину с фильтром по банку (тот же формат query, что и CatalogFilters.vue: bank_id[]=). */
+    private function catalogUrl(string $path, int $bankId): string
+    {
+        return $this->frontend($path).'?'.http_build_query(['bank_id' => [$bankId]]);
     }
 }

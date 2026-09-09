@@ -76,6 +76,12 @@ class Bank extends Model
         return $this->hasMany(BankReview::class, 'bank_id');
     }
 
+    /** @return HasMany<BankCurrencyRate, $this> */
+    public function currencyRates(): HasMany
+    {
+        return $this->hasMany(BankCurrencyRate::class, 'bank_id');
+    }
+
     /**
      * Только активные банки (status = 'active').
      *
