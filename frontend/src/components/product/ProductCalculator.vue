@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Locale, Product } from '@/types/api'
-import { calcCredit, calcDeposit, isValidCalcInput } from '@/lib/calculator'
+import { calcCredit, calcDeposit, generateCreditSchedule, isValidCalcInput } from '@/lib/calculator'
 import { findRateTier } from '@/lib/rateTiers'
-import { formatMoney, formatPercent } from '@/lib/format'
+import { formatDateShort, formatMoney, formatPercent } from '@/lib/format'
 import BaseTextField from '@/components/ui/BaseTextField.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseCheckbox from '@/components/ui/BaseCheckbox.vue'
@@ -76,8 +76,23 @@ const periodsModel = computed({
   set: (v: string) => (state.periodsPerYear = Number(v)),
 })
 
+const showSchedule = ref(false)
+
+const schedule = computed(() => {
+  if (isDeposit.value || !inputValid.value || !showSchedule.value) return []
+  return generateCreditSchedule({
+    amount: Number(state.amount),
+    termMonths: Number(state.term),
+    rate: effectiveRate.value,
+  })
+})
+
 function money(value: number): string {
   return formatMoney(value, props.product.currency, loc.value)
+}
+
+function date(value: Date): string {
+  return formatDateShort(value, loc.value)
 }
 </script>
 
@@ -118,20 +133,52 @@ function money(value: number): string {
 
     <p v-if="!inputValid" class="calc__hint">{{ t('calc.invalid') }}</p>
 
-    <dl v-else-if="creditResult" class="calc__results">
-      <div class="calc__result calc__result--primary">
-        <dt>{{ t('calc.monthlyPayment') }}</dt>
-        <dd class="tabular">{{ money(creditResult.monthlyPayment) }}</dd>
+    <template v-else-if="creditResult">
+      <dl class="calc__results">
+        <div class="calc__result calc__result--primary">
+          <dt>{{ t('calc.monthlyPayment') }}</dt>
+          <dd class="tabular">{{ money(creditResult.monthlyPayment) }}</dd>
+        </div>
+        <div class="calc__result">
+          <dt>{{ t('calc.overpayment') }}</dt>
+          <dd class="tabular">{{ money(creditResult.overpayment) }}</dd>
+        </div>
+        <div class="calc__result">
+          <dt>{{ t('calc.totalPaid') }}</dt>
+          <dd class="tabular">{{ money(creditResult.totalPaid) }}</dd>
+        </div>
+      </dl>
+
+      <button type="button" class="calc__schedule-toggle" @click="showSchedule = !showSchedule">
+        {{ showSchedule ? t('calc.schedule.hide') : t('calc.schedule.show') }}
+      </button>
+
+      <div v-if="showSchedule" class="calc__schedule">
+        <p class="calc__schedule-disclaimer">{{ t('calc.schedule.disclaimer') }}</p>
+        <table class="calc__schedule-table">
+          <thead>
+            <tr>
+              <th>{{ t('calc.schedule.n') }}</th>
+              <th>{{ t('calc.schedule.date') }}</th>
+              <th>{{ t('calc.schedule.payment') }}</th>
+              <th>{{ t('calc.schedule.interest') }}</th>
+              <th>{{ t('calc.schedule.principal') }}</th>
+              <th>{{ t('calc.schedule.balance') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in schedule" :key="row.index">
+              <td>{{ row.index }}</td>
+              <td>{{ date(row.date) }}</td>
+              <td class="tabular">{{ money(row.payment) }}</td>
+              <td class="tabular">{{ money(row.interest) }}</td>
+              <td class="tabular">{{ money(row.principal) }}</td>
+              <td class="tabular">{{ money(row.balance) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div class="calc__result">
-        <dt>{{ t('calc.overpayment') }}</dt>
-        <dd class="tabular">{{ money(creditResult.overpayment) }}</dd>
-      </div>
-      <div class="calc__result">
-        <dt>{{ t('calc.totalPaid') }}</dt>
-        <dd class="tabular">{{ money(creditResult.totalPaid) }}</dd>
-      </div>
-    </dl>
+    </template>
 
     <dl v-else-if="depositResult" class="calc__results">
       <div class="calc__result calc__result--primary">
@@ -216,5 +263,45 @@ function money(value: number): string {
 .calc__result--primary dd {
   font-size: var(--fs-xl);
   color: var(--color-primary);
+}
+.calc__schedule-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.calc__schedule-toggle:hover {
+  text-decoration: underline;
+}
+.calc__schedule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.calc__schedule-disclaimer {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+.calc__schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.calc__schedule-table th,
+.calc__schedule-table td {
+  padding: var(--space-2);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.calc__schedule-table th:first-child,
+.calc__schedule-table td:first-child,
+.calc__schedule-table th:nth-child(2),
+.calc__schedule-table td:nth-child(2) {
+  text-align: left;
 }
 </style>

@@ -54,6 +54,15 @@ export function formatDate(iso: string, locale: Locale): string {
   }
 }
 
+/** Компактная дата для таблиц: "11.10.2026". */
+export function formatDateShort(date: Date, locale: Locale): string {
+  try {
+    return new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: 'short' }).format(date)
+  } catch {
+    return date.toLocaleDateString()
+  }
+}
+
 export interface FreshnessTag {
   label: string
   type: 'success' | 'warning' | 'error'
