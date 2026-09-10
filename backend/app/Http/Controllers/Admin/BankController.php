@@ -107,6 +107,7 @@ class BankController extends Controller
             ],
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'is_partner' => ['boolean'],
+            'sort_coefficient' => ['numeric'],
             'contact_email' => ['nullable', 'email', 'max:255'],
             'website' => ['nullable', 'string', 'max:500'],
             'phone' => ['nullable', 'string', 'max:150'],

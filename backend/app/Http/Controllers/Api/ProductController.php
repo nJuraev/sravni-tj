@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProductIndexRequest;
 use App\Http\Resources\ProductResource;
+use App\Models\Bank;
 use App\Models\Product;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -131,7 +132,12 @@ class ProductController extends Controller
         $finalQuery = Product::query()
             ->whereIn('id', $representativeIds)
             ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates']);
-        $this->applySort($finalQuery, (string) $request->input('sort', $defaultSort));
+
+        if ($request->filled('sort')) {
+            $this->applySort($finalQuery, (string) $request->input('sort'));
+        } else {
+            $this->applyDefaultSort($finalQuery, $defaultSort);
+        }
 
         $paginator = $finalQuery->paginate(
             perPage: $perPage,
@@ -364,6 +370,31 @@ class ProductController extends Controller
                 $tier->where('rate', '<=', $rateMax);
             }
         });
+    }
+
+    /**
+     * Дефолтная сортировка (когда клиент не передал ?sort): сперва по ручному
+     * коэффициенту приоритета банка (banks.sort_coefficient, больше — выше),
+     * затем — исходный дефолт эндпоинта (ставка/срок) как тай-брейк.
+     * Явный выбор сортировки пользователем (?sort=...) коэффициент игнорирует —
+     * applySort() используется вместо этого метода.
+     *
+     * @param  Builder<Product>  $query
+     */
+    private function applyDefaultSort(Builder $query, string $defaultSort): void
+    {
+        $direction = 'asc';
+        $field = $defaultSort;
+
+        if (str_starts_with($defaultSort, '-')) {
+            $direction = 'desc';
+            $field = substr($defaultSort, 1);
+        }
+
+        $query
+            ->orderByDesc(Bank::query()->select('sort_coefficient')->whereColumn('banks.id', 'products.bank_id'))
+            ->orderBy($field, $direction)
+            ->orderBy('id', 'asc');
     }
 
     /**

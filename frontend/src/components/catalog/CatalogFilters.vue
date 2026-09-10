@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, watch, computed, ref, onMounted } from 'vue'
+import { reactive, watch, computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Bank, Currency, FeatureKey, ProductQuery, Subcategory } from '@/types/api'
 import { FEATURE_KEYS, SUBCATEGORIES_BY_CATEGORY } from '@/composables/useProductDisplay'
@@ -36,14 +36,15 @@ onMounted(async () => {
 })
 
 const CURRENCIES: Currency[] = ['TJS', 'USD', 'EUR']
+const TERM_OPTIONS_MONTHS = [3, 6, 12, 24, 36, 60, 120]
 
 // Subcategory codes for the current (route-owned) category; empty for installment.
 const subcategoryOptions = computed<Subcategory[]>(
   () => SUBCATEGORIES_BY_CATEGORY[props.query.category ?? 'credit'] ?? [],
 )
 
-// Advanced section (ranges/features) collapsed by default; opens automatically
-// if the incoming query already has one of them set, so state stays visible.
+// Всё, кроме суммы/срока, скрыто по умолчанию (§ prodengi.kz-style); открывается шестерёнкой.
+// Открывается автоматически, если в query уже есть что-то из скрытого — иначе состояние потеряется из виду.
 const advancedOpen = ref(false)
 
 // Local editable copy; numeric fields use '' when empty for clean inputs.
@@ -51,15 +52,12 @@ const local = reactive({
   bank_id: [] as number[],
   subcategory: [] as Subcategory[],
   currency: '' as '' | Currency,
-  amount_min: '' as number | '',
-  amount_max: '' as number | '',
-  term_min: '' as number | '',
-  term_max: '' as number | '',
+  amount: '' as number | '',
+  term: '' as number | '',
   rate_min: '' as number | '',
   rate_max: '' as number | '',
   features: [] as FeatureKey[],
   special: false,
-  sort: DEFAULT_SORT,
 })
 
 // «Особые» (аномальные) — только у кредитов; галочка по умолчанию выкл.
@@ -67,9 +65,10 @@ const showSpecial = computed(() => (props.query.category ?? 'credit') === 'credi
 
 const activeAdvancedCount = computed(() => {
   let n = 0
+  if (local.currency) n++
+  if (local.subcategory.length) n++
+  if (local.bank_id.length) n++
   if (local.special) n++
-  if (local.amount_min !== '' || local.amount_max !== '') n++
-  if (local.term_min !== '' || local.term_max !== '') n++
   if (local.rate_min !== '' || local.rate_max !== '') n++
   if (local.features.length) n++
   return n
@@ -84,15 +83,12 @@ function hydrate(q: ProductQuery) {
   // Drop any codes not valid for the current category (e.g. after switching tabs).
   local.subcategory = (q.subcategory ?? []).filter((c) => subcategoryOptions.value.includes(c))
   local.currency = q.currency ?? ''
-  local.amount_min = q.amount_min ?? ''
-  local.amount_max = q.amount_max ?? ''
-  local.term_min = q.term_min ?? ''
-  local.term_max = q.term_max ?? ''
+  local.amount = q.amount_min ?? q.amount_max ?? ''
+  local.term = q.term_min ?? q.term_max ?? ''
   local.rate_min = q.rate_min ?? ''
   local.rate_max = q.rate_max ?? ''
   local.features = [...(q.features ?? [])]
   local.special = q.special ?? false
-  local.sort = q.sort ?? DEFAULT_SORT
   if (activeAdvancedCount.value > 0) advancedOpen.value = true
 }
 
@@ -103,24 +99,25 @@ const currencyOptions = computed(() => [
   ...CURRENCIES.map((c) => ({ value: c, label: c })),
 ])
 
-const sortOptions = computed(() => [
-  { value: 'rate_min', label: t('catalog.sort.rate_min') },
-  { value: '-rate_max', label: t('catalog.sort.-rate_max') },
-  { value: 'amount_min', label: t('catalog.sort.amount_min') },
-  { value: 'term_min', label: t('catalog.sort.term_min') },
+const termOptions = computed(() => [
+  { value: '', label: t('filters.any') },
+  ...TERM_OPTIONS_MONTHS.map((m) => ({ value: String(m), label: `${m} ${t('common.months')}` })),
 ])
 
+// BaseSelect работает со string — мостик к числовому local.term.
+const termSelectValue = computed({
+  get: () => (local.term === '' ? '' : String(local.term)),
+  set: (v: string) => {
+    local.term = v === '' ? '' : Number(v)
+    applyNow()
+  },
+})
+
 // Block invalid ranges (min > max) before they ever reach the API (§3.2).
-const amountInvalid = computed(
-  () => local.amount_min !== '' && local.amount_max !== '' && local.amount_min > local.amount_max,
-)
-const termInvalid = computed(
-  () => local.term_min !== '' && local.term_max !== '' && local.term_min > local.term_max,
-)
 const rateInvalid = computed(
   () => local.rate_min !== '' && local.rate_max !== '' && local.rate_min > local.rate_max,
 )
-const hasInvalid = computed(() => amountInvalid.value || termInvalid.value || rateInvalid.value)
+const hasInvalid = computed(() => rateInvalid.value)
 
 function toNum(v: number | ''): number | undefined {
   return v === '' ? undefined : v
@@ -154,15 +151,15 @@ function buildQuery(): ProductQuery {
     subcategory: [...local.subcategory],
     bank_id: [...local.bank_id],
     currency: local.currency || undefined,
-    amount_min: toNum(local.amount_min),
-    amount_max: toNum(local.amount_max),
-    term_min: toNum(local.term_min),
-    term_max: toNum(local.term_max),
+    amount_min: toNum(local.amount),
+    amount_max: toNum(local.amount),
+    term_min: toNum(local.term),
+    term_max: toNum(local.term),
     rate_min: toNum(local.rate_min),
     rate_max: toNum(local.rate_max),
     features: [...local.features],
     special: local.special || undefined,
-    sort: local.sort,
+    sort: props.query.sort ?? DEFAULT_SORT,
     per_page: props.query.per_page,
   }
 }
@@ -178,20 +175,17 @@ function resetAll() {
   local.bank_id = []
   local.subcategory = []
   local.currency = ''
-  local.amount_min = ''
-  local.amount_max = ''
-  local.term_min = ''
-  local.term_max = ''
+  local.amount = ''
+  local.term = ''
   local.rate_min = ''
   local.rate_max = ''
   local.features = []
   local.special = false
-  local.sort = DEFAULT_SORT
   advancedOpen.value = false
   emit('reset')
 }
 
-/** Применить немедленно (для «живых» контролов: банки, особые). */
+/** Применить немедленно (для «живых» контролов: сумма, срок, банки, особые). */
 function applyNow() {
   if (!hasInvalid.value) emit('apply', buildQuery())
 }
@@ -212,166 +206,151 @@ function onSpecialChange(checked: boolean) {
   applyNow()
 }
 
-// Sort changes apply immediately (no submit button needed for it).
+// Сумма — «живой» ввод: фильтруем автоматически, но с debounce, чтобы не
+// слать запрос на каждое нажатие клавиши.
+let amountDebounce: ReturnType<typeof setTimeout> | undefined
 watch(
-  () => local.sort,
+  () => local.amount,
   () => {
-    if (!hasInvalid.value) emit('apply', buildQuery())
+    clearTimeout(amountDebounce)
+    amountDebounce = setTimeout(applyNow, 400)
   },
 )
+onBeforeUnmount(() => clearTimeout(amountDebounce))
 </script>
 
 <template>
   <form class="filters" novalidate @submit.prevent="submit">
-    <div class="filters__top">
-      <h2 class="filters__title">{{ t('filters.title') }}</h2>
-      <BaseButton type="button" variant="ghost" size="sm" @click="resetAll">
-        {{ t('common.reset') }}
-      </BaseButton>
+    <div class="filters__quick">
+      <h2 class="filters__title">{{ t('filters.pickTitle') }}</h2>
+      <div class="filters__quick-row">
+        <BaseTextField
+          v-model="local.amount"
+          type="number"
+          inputmode="numeric"
+          :min="0"
+          :label="t('filters.amount')"
+          :placeholder="t('filters.amountPlaceholder')"
+          class="filters__quick-field"
+        />
+        <BaseSelect
+          v-model="termSelectValue"
+          :label="t('filters.term')"
+          :options="termOptions"
+          class="filters__quick-field"
+        />
+        <div class="filters__quick-actions">
+          <BaseButton type="submit" class="filters__quick-submit">{{ t('filters.pick') }}</BaseButton>
+          <button
+            type="button"
+            class="filters__gear"
+            :aria-expanded="advancedOpen"
+            :aria-label="advancedOpen ? t('filters.hideAdvanced') : t('filters.showAdvanced')"
+            @click="toggleAdvanced"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path
+                d="M3 6h9M15 6h2M3 10h5M9 10h8M3 14h11M16 14h1"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+              />
+              <circle cx="12" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+              <circle cx="7" cy="10" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+              <circle cx="13.5" cy="14" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+            </svg>
+            <span v-if="activeAdvancedCount" class="filters__badge">{{ activeAdvancedCount }}</span>
+          </button>
+        </div>
+      </div>
     </div>
-
-    <BaseSelect
-      :model-value="local.currency"
-      :label="t('filters.currency')"
-      :options="currencyOptions"
-      @update:model-value="onCurrencyChange"
-    />
-
-    <fieldset v-if="subcategoryOptions.length" class="filters__group">
-      <legend>{{ t('filters.subcategory') }}</legend>
-      <div class="filters__chips">
-        <button
-          v-for="code in subcategoryOptions"
-          :key="code"
-          type="button"
-          class="filters__chip"
-          :class="{ 'filters__chip--on': local.subcategory.includes(code) }"
-          :aria-pressed="local.subcategory.includes(code)"
-          @click="toggleSubcategory(code)"
-        >
-          {{ t(`subcategory.${code}`) }}
-        </button>
-      </div>
-    </fieldset>
-
-    <fieldset v-if="bankTiles.length" class="filters__group">
-      <legend>{{ t('filters.banks') }}</legend>
-      <BankPicker :model-value="local.bank_id" :banks="bankTiles" @update:model-value="onBanksChange" />
-      <div v-if="local.bank_id.length" class="filters__bankfoot">
-        <span>{{ t('filters.banksSelected', { count: local.bank_id.length }) }}</span>
-        <button type="button" class="filters__linkbtn" @click="clearBanks">
-          {{ t('common.reset') }}
-        </button>
-      </div>
-    </fieldset>
-
-    <button
-      type="button"
-      class="filters__advanced-toggle"
-      :aria-expanded="advancedOpen"
-      @click="toggleAdvanced"
-    >
-      <span>{{ advancedOpen ? t('filters.hideAdvanced') : t('filters.showAdvanced') }}</span>
-      <span v-if="activeAdvancedCount" class="filters__badge">{{ activeAdvancedCount }}</span>
-      <svg
-        class="filters__advanced-chevron"
-        :class="{ 'filters__advanced-chevron--open': advancedOpen }"
-        viewBox="0 0 16 16"
-        aria-hidden="true"
-      >
-        <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-    </button>
 
     <div v-show="advancedOpen" class="filters__advanced">
-    <fieldset v-if="showSpecial" class="filters__group">
-      <legend>{{ t('filters.special') }}</legend>
-      <BaseCheckbox :model-value="local.special" @update:model-value="onSpecialChange">
-        {{ t('filters.specialShow') }}
-      </BaseCheckbox>
-    </fieldset>
-
-    <fieldset class="filters__group">
-      <legend>{{ t('filters.amount') }}</legend>
-      <div class="filters__pair">
-        <BaseTextField
-          v-model="local.amount_min"
-          type="number"
-          inputmode="numeric"
-          :min="0"
-          :placeholder="t('common.from')"
-          :error="amountInvalid ? t('filters.invalidRange') : ''"
-        />
-        <BaseTextField
-          v-model="local.amount_max"
-          type="number"
-          inputmode="numeric"
-          :min="0"
-          :placeholder="t('common.to')"
-        />
+      <div class="filters__advanced-head">
+        <h3>{{ t('filters.title') }}</h3>
+        <BaseButton type="button" variant="ghost" size="sm" @click="resetAll">
+          {{ t('common.reset') }}
+        </BaseButton>
       </div>
-    </fieldset>
 
-    <fieldset class="filters__group">
-      <legend>{{ t('filters.term') }}</legend>
-      <div class="filters__pair">
-        <BaseTextField
-          v-model="local.term_min"
-          type="number"
-          inputmode="numeric"
-          :min="1"
-          :placeholder="t('common.from')"
-          :error="termInvalid ? t('filters.invalidRange') : ''"
-        />
-        <BaseTextField
-          v-model="local.term_max"
-          type="number"
-          inputmode="numeric"
-          :min="1"
-          :placeholder="t('common.to')"
-        />
-      </div>
-    </fieldset>
+      <BaseSelect
+        :model-value="local.currency"
+        :label="t('filters.currency')"
+        :options="currencyOptions"
+        @update:model-value="onCurrencyChange"
+      />
 
-    <fieldset class="filters__group">
-      <legend>{{ t('filters.rate') }}</legend>
-      <div class="filters__pair">
-        <BaseTextField
-          v-model="local.rate_min"
-          type="number"
-          inputmode="decimal"
-          :min="0"
-          :placeholder="t('common.from')"
-          :error="rateInvalid ? t('filters.invalidRange') : ''"
-        />
-        <BaseTextField
-          v-model="local.rate_max"
-          type="number"
-          inputmode="decimal"
-          :min="0"
-          :placeholder="t('common.to')"
-        />
-      </div>
-    </fieldset>
+      <fieldset v-if="subcategoryOptions.length" class="filters__group">
+        <legend>{{ t('filters.subcategory') }}</legend>
+        <div class="filters__chips">
+          <button
+            v-for="code in subcategoryOptions"
+            :key="code"
+            type="button"
+            class="filters__chip"
+            :class="{ 'filters__chip--on': local.subcategory.includes(code) }"
+            :aria-pressed="local.subcategory.includes(code)"
+            @click="toggleSubcategory(code)"
+          >
+            {{ t(`subcategory.${code}`) }}
+          </button>
+        </div>
+      </fieldset>
 
-    <fieldset class="filters__group filters__group--features">
-      <legend>{{ t('filters.features') }}</legend>
-      <BaseCheckbox
-        v-for="key in FEATURE_KEYS"
-        :key="key"
-        :model-value="local.features.includes(key)"
-        @update:model-value="(v) => toggleFeature(key, v)"
-      >
-        {{ t(`features.${key}`) }}
-      </BaseCheckbox>
-    </fieldset>
+      <fieldset v-if="bankTiles.length" class="filters__group">
+        <legend>{{ t('filters.banks') }}</legend>
+        <BankPicker :model-value="local.bank_id" :banks="bankTiles" @update:model-value="onBanksChange" />
+        <div v-if="local.bank_id.length" class="filters__bankfoot">
+          <span>{{ t('filters.banksSelected', { count: local.bank_id.length }) }}</span>
+          <button type="button" class="filters__linkbtn" @click="clearBanks">
+            {{ t('common.reset') }}
+          </button>
+        </div>
+      </fieldset>
+
+      <fieldset v-if="showSpecial" class="filters__group">
+        <legend>{{ t('filters.special') }}</legend>
+        <BaseCheckbox :model-value="local.special" @update:model-value="onSpecialChange">
+          {{ t('filters.specialShow') }}
+        </BaseCheckbox>
+      </fieldset>
+
+      <fieldset class="filters__group">
+        <legend>{{ t('filters.rate') }}</legend>
+        <div class="filters__pair">
+          <BaseTextField
+            v-model="local.rate_min"
+            type="number"
+            inputmode="decimal"
+            :min="0"
+            :placeholder="t('common.from')"
+            :error="rateInvalid ? t('filters.invalidRange') : ''"
+          />
+          <BaseTextField
+            v-model="local.rate_max"
+            type="number"
+            inputmode="decimal"
+            :min="0"
+            :placeholder="t('common.to')"
+          />
+        </div>
+      </fieldset>
+
+      <fieldset class="filters__group filters__group--features">
+        <legend>{{ t('filters.features') }}</legend>
+        <BaseCheckbox
+          v-for="key in FEATURE_KEYS"
+          :key="key"
+          :model-value="local.features.includes(key)"
+          @update:model-value="(v) => toggleFeature(key, v)"
+        >
+          {{ t(`features.${key}`) }}
+        </BaseCheckbox>
+      </fieldset>
+
+      <BaseButton type="submit" block :disabled="hasInvalid">{{ t('filters.apply') }}</BaseButton>
     </div>
-
-    <div class="filters__sort">
-      <BaseSelect v-model="local.sort" :label="t('catalog.sort.label')" :options="sortOptions" />
-    </div>
-
-    <BaseButton type="submit" block :disabled="hasInvalid">{{ t('filters.apply') }}</BaseButton>
   </form>
 </template>
 
@@ -386,13 +365,80 @@ watch(
   border-radius: var(--radius-lg);
   font-size: var(--fs-sm);
 }
-.filters__top {
+.filters__quick {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 .filters__title {
   font-size: var(--fs-lg);
+}
+.filters__quick-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: var(--space-3);
+}
+.filters__quick-field {
+  min-width: 0;
+}
+.filters__quick-actions {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+.filters__quick-submit {
+  white-space: nowrap;
+}
+.filters__gear {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.filters__gear:hover {
+  border-color: var(--color-primary);
+}
+.filters__gear svg {
+  width: 20px;
+  height: 20px;
+}
+.filters__badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.filters__advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.filters__advanced-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .filters__group {
   border: 0;
@@ -458,46 +504,15 @@ watch(
   border-color: var(--color-primary);
   color: #fff;
 }
-.filters__advanced-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-  border: 0;
-  background: none;
-  color: var(--color-primary);
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-.filters__advanced-toggle:hover {
-  text-decoration: underline;
-}
-.filters__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-pill, 999px);
-  background: var(--color-primary);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-}
-.filters__advanced-chevron {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.15s ease;
-}
-.filters__advanced-chevron--open {
-  transform: rotate(180deg);
-}
-.filters__advanced {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+@media (max-width: 720px) {
+  .filters__quick-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .filters__quick-actions {
+    grid-column: 1 / -1;
+  }
+  .filters__quick-submit {
+    flex: 1;
+  }
 }
 </style>

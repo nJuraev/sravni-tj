@@ -2,7 +2,7 @@
 import { h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NDataTable, NButton, NInput, NSelect, NTag, NSpace, NModal, NCard, NForm,
+  NDataTable, NButton, NInput, NInputNumber, NSelect, NTag, NSpace, NModal, NCard, NForm,
   NFormItem, NSwitch, NIcon, useMessage, useDialog, type DataTableColumns,
 } from 'naive-ui'
 import { AddOutline, SearchOutline } from '@vicons/ionicons5'
@@ -27,7 +27,7 @@ const fieldErrors = reactive<Record<string, string>>({})
 
 function emptyForm(): BankPayload {
   return {
-    name_ru: '', name_tg: '', slug: '', status: 'active', is_partner: false,
+    name_ru: '', name_tg: '', slug: '', status: 'active', is_partner: false, sort_coefficient: 0,
     contact_email: '', website: '', phone: '', address_ru: '', address_tg: '',
     about_ru: '', about_tg: '', logo_url: '',
   }
@@ -59,7 +59,7 @@ function openEdit(b: AdminBank) {
   editing.value = b
   Object.assign(form, {
     name_ru: b.name_ru, name_tg: b.name_tg ?? '', slug: b.slug, status: b.status,
-    is_partner: b.is_partner, contact_email: b.contact_email ?? '', website: b.website ?? '',
+    is_partner: b.is_partner, sort_coefficient: b.sort_coefficient, contact_email: b.contact_email ?? '', website: b.website ?? '',
     phone: b.phone ?? '', address_ru: b.address_ru ?? '', address_tg: b.address_tg ?? '',
     about_ru: b.about_ru ?? '', about_tg: b.about_tg ?? '', logo_url: b.logo_url ?? '',
   })
@@ -126,6 +126,7 @@ const columns: DataTableColumns<AdminBank> = [
     render: (b) => h(NTag, { size: 'small', type: b.status === 'active' ? 'success' : 'default', bordered: false },
       () => (b.status === 'active' ? 'активен' : 'выключен')),
   },
+  { title: 'Коэф.', key: 'sort_coefficient', width: 80, render: (b) => b.sort_coefficient },
   { title: 'Продукты', key: 'products_count', width: 100, render: (b) => b.products_count ?? 0 },
   { title: 'Заявки', key: 'leads_count', width: 90, render: (b) => b.leads_count ?? 0 },
   {
@@ -228,9 +229,14 @@ const columns: DataTableColumns<AdminBank> = [
               <n-input v-model:value="form.about_tg" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" />
             </n-form-item>
           </div>
-          <n-form-item label="Партнёр">
-            <n-switch v-model:value="form.is_partner" />
-          </n-form-item>
+          <div class="grid2">
+            <n-form-item label="Партнёр">
+              <n-switch v-model:value="form.is_partner" />
+            </n-form-item>
+            <n-form-item label="Коэф. сортировки" :validation-status="fieldErrors.sort_coefficient ? 'error' : undefined" :feedback="fieldErrors.sort_coefficient ?? 'Дефолтная сортировка каталога: больше — выше в выдаче'">
+              <n-input-number v-model:value="form.sort_coefficient" style="width: 100%" />
+            </n-form-item>
+          </div>
         </n-space>
       </n-form>
       <template #footer>

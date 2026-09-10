@@ -28,6 +28,7 @@ class AdminBankResource extends JsonResource
             'slug' => $this->slug,
             'status' => $this->status,
             'is_partner' => (bool) $this->is_partner,
+            'sort_coefficient' => (float) $this->sort_coefficient,
             'contact_email' => $this->contact_email,
             'website' => $this->website,
             'phone' => $this->phone,

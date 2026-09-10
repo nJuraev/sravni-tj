@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $about_tg
  * @property string $status
  * @property bool $is_partner
+ * @property float $sort_coefficient Ручной приоритет банка в каталоге (дефолтная сортировка выдачи продуктов)
  * @property string|null $logo_url
  * @property string|null $lang_url_rule_type Правило вывода tj-URL из ru-URL для парсера (query_param|path_replace); см. Go model.LangURLRule
  * @property array|null $lang_url_rule_params
@@ -46,6 +47,7 @@ class Bank extends Model
 
     protected $casts = [
         'is_partner' => 'boolean',
+        'sort_coefficient' => 'decimal:2',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'products_updated_at' => 'datetime',

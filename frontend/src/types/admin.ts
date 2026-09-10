@@ -22,6 +22,8 @@ export interface AdminBank {
   slug: string
   status: BankStatus
   is_partner: boolean
+  /** Ручной приоритет банка в каталоге: дефолтная сортировка выдачи продуктов (больше — выше). */
+  sort_coefficient: number
   contact_email: string | null
   website: string | null
   phone: string | null

@@ -336,6 +336,35 @@ class ProductCatalogTest extends TestCase
             ->assertJsonPath('pagination.total_pages', 0);
     }
 
+    public function test_bank_sort_coefficient_takes_priority_over_default_rate_sort(): void
+    {
+        $priorityBank = Bank::factory()->create(['sort_coefficient' => 10]);
+        $regularBank = Bank::factory()->create(['sort_coefficient' => 0]);
+
+        // Выгоднее по ставке, но банк без приоритета — должен идти вторым.
+        $cheap = Product::factory()->for($regularBank, 'bank')->credit()->create(['rate_min' => 5, 'rate_max' => 9]);
+        $expensive = Product::factory()->for($priorityBank, 'bank')->credit()->create(['rate_min' => 25, 'rate_max' => 30]);
+
+        $this->getJson('/api/products/credits')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', (int) $expensive->id)
+            ->assertJsonPath('data.1.id', (int) $cheap->id);
+    }
+
+    public function test_explicit_sort_ignores_bank_coefficient(): void
+    {
+        $priorityBank = Bank::factory()->create(['sort_coefficient' => 10]);
+        $regularBank = Bank::factory()->create(['sort_coefficient' => 0]);
+
+        $cheap = Product::factory()->for($regularBank, 'bank')->credit()->create(['rate_min' => 5, 'rate_max' => 9]);
+        $expensive = Product::factory()->for($priorityBank, 'bank')->credit()->create(['rate_min' => 25, 'rate_max' => 30]);
+
+        $this->getJson('/api/products/credits?sort=rate_min')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', (int) $cheap->id)
+            ->assertJsonPath('data.1.id', (int) $expensive->id);
+    }
+
     public function test_explicit_sort_overrides_default(): void
     {
         $bank = Bank::factory()->create();

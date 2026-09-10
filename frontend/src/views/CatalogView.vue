@@ -12,6 +12,7 @@ import ProductCard from '@/components/catalog/ProductCard.vue'
 import SkeletonCard from '@/components/ui/SkeletonCard.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
+import BaseSelect from '@/components/ui/BaseSelect.vue'
 
 const props = defineProps<{ category: Category }>()
 
@@ -20,31 +21,15 @@ const api = useApi()
 const category = toRef(props, 'category')
 const { query, apply, setPage, reset } = useCatalogQuery(() => category.value)
 
-// Мобильный drawer: фильтры свёрнуты по умолчанию, чтобы сразу видеть список продуктов.
-const filtersOpen = ref(false)
+const sortOptions = computed(() => [
+  { value: 'rate_min', label: t('catalog.sort.rate_min') },
+  { value: '-rate_max', label: t('catalog.sort.-rate_max') },
+  { value: 'amount_min', label: t('catalog.sort.amount_min') },
+  { value: 'term_min', label: t('catalog.sort.term_min') },
+])
 
-const activeFilterCount = computed(() => {
-  const q = query.value
-  let n = 0
-  if (q.currency) n++
-  if (q.subcategory?.length) n++
-  if (q.bank_id?.length) n++
-  if (q.special) n++
-  if (q.amount_min != null || q.amount_max != null) n++
-  if (q.term_min != null || q.term_max != null) n++
-  if (q.rate_min != null || q.rate_max != null) n++
-  if (q.features?.length) n++
-  return n
-})
-
-function applyFilters(q: ProductQuery) {
-  apply(q)
-  filtersOpen.value = false
-}
-
-function resetFilters() {
-  reset()
-  filtersOpen.value = false
+function onSortChange(value: string) {
+  apply({ ...query.value, sort: value })
 }
 
 const products = ref<Product[]>([])
@@ -106,63 +91,56 @@ watch(query, (q) => load(q), { deep: true })
   <div class="catalog container">
     <header class="catalog__header">
       <h1>{{ title }}</h1>
+    </header>
+
+    <CatalogFilters :query="query" @apply="apply" @reset="reset" />
+
+    <div class="catalog__results-head">
       <p v-if="pagination" class="catalog__count">
         {{ t('catalog.found', { count: pagination.total_items }) }}
       </p>
-    </header>
-
-    <button
-      type="button"
-      class="catalog__filters-toggle"
-      :aria-expanded="filtersOpen"
-      @click="filtersOpen = !filtersOpen"
-    >
-      <span>{{ t('filters.openMobile') }}</span>
-      <span v-if="activeFilterCount" class="catalog__filters-badge">{{ activeFilterCount }}</span>
-    </button>
-
-    <div class="catalog__layout">
-      <aside class="catalog__sidebar" :class="{ 'catalog__sidebar--open': filtersOpen }">
-        <CatalogFilters :query="query" @apply="applyFilters" @reset="resetFilters" />
-        <BaseButton class="catalog__filters-close" variant="secondary" block @click="filtersOpen = false">
-          {{ t('filters.closeMobile') }}
-        </BaseButton>
-      </aside>
-
-      <section class="catalog__results" aria-live="polite">
-        <div v-if="status === 'loading'" class="catalog__grid">
-          <SkeletonCard v-for="n in 6" :key="n" />
-        </div>
-
-        <StateMessage
-          v-else-if="status === 'error'"
-          tone="error"
-          :title="t('catalog.errorTitle')"
-          :hint="t('catalog.errorHint')"
-        >
-          <template #action>
-            <BaseButton @click="load(query)">{{ t('common.retry') }}</BaseButton>
-          </template>
-        </StateMessage>
-
-        <StateMessage
-          v-else-if="isEmpty"
-          :title="t('catalog.empty')"
-          :hint="t('catalog.emptyHint')"
-        >
-          <template #action>
-            <BaseButton variant="secondary" @click="reset">{{ t('common.reset') }}</BaseButton>
-          </template>
-        </StateMessage>
-
-        <template v-else>
-          <div class="catalog__list">
-            <ProductCard v-for="p in products" :key="p.id" :product="p" />
-          </div>
-          <CatalogPagination v-if="pagination" :pagination="pagination" @change="setPage" />
-        </template>
-      </section>
+      <BaseSelect
+        :model-value="query.sort ?? ''"
+        :label="t('catalog.sort.label')"
+        :options="sortOptions"
+        class="catalog__sort"
+        @update:model-value="onSortChange"
+      />
     </div>
+
+    <section class="catalog__results" aria-live="polite">
+      <div v-if="status === 'loading'" class="catalog__grid">
+        <SkeletonCard v-for="n in 6" :key="n" />
+      </div>
+
+      <StateMessage
+        v-else-if="status === 'error'"
+        tone="error"
+        :title="t('catalog.errorTitle')"
+        :hint="t('catalog.errorHint')"
+      >
+        <template #action>
+          <BaseButton @click="load(query)">{{ t('common.retry') }}</BaseButton>
+        </template>
+      </StateMessage>
+
+      <StateMessage
+        v-else-if="isEmpty"
+        :title="t('catalog.empty')"
+        :hint="t('catalog.emptyHint')"
+      >
+        <template #action>
+          <BaseButton variant="secondary" @click="reset">{{ t('common.reset') }}</BaseButton>
+        </template>
+      </StateMessage>
+
+      <template v-else>
+        <div class="catalog__list">
+          <ProductCard v-for="p in products" :key="p.id" :product="p" />
+        </div>
+        <CatalogPagination v-if="pagination" :pagination="pagination" @change="setPage" />
+      </template>
+    </section>
   </div>
 </template>
 
@@ -173,19 +151,18 @@ watch(query, (q) => load(q), { deep: true })
 .catalog__header {
   margin-bottom: var(--space-6);
 }
+.catalog__results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-block: var(--space-5);
+}
 .catalog__count {
-  margin-top: var(--space-1);
   color: var(--color-text-secondary);
 }
-.catalog__layout {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: var(--space-6);
-  align-items: start;
-}
-.catalog__sidebar {
-  position: sticky;
-  top: calc(var(--header-height) + var(--space-4));
+.catalog__sort {
+  width: 260px;
 }
 .catalog__grid {
   display: grid;
@@ -198,65 +175,13 @@ watch(query, (q) => load(q), { deep: true })
   gap: var(--space-4);
   margin-bottom: var(--space-6);
 }
-.catalog__filters-toggle {
-  display: none;
-}
-.catalog__filters-close {
-  display: none;
-}
-@media (max-width: 900px) {
-  .catalog__layout {
-    grid-template-columns: 1fr;
-  }
-  .catalog__sidebar {
-    position: static;
-  }
-
-  /* Мобилка: фильтры скрыты по умолчанию, открываются кнопкой над списком продуктов. */
-  .catalog__filters-toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: 100%;
-    margin-bottom: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .catalog__filters-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: var(--radius-pill, 999px);
-    background: var(--color-primary);
-    color: #fff;
-    font-size: var(--fs-xs);
-    font-weight: 700;
-  }
-  .catalog__sidebar {
-    display: none;
-  }
-  .catalog__sidebar--open {
-    display: flex;
+@media (max-width: 720px) {
+  .catalog__results-head {
     flex-direction: column;
-    gap: var(--space-4);
-    position: fixed;
-    inset: var(--header-height) 0 0 0;
-    z-index: 40;
-    padding: var(--space-4);
-    background: var(--color-bg-page, var(--color-bg));
-    overflow-y: auto;
+    align-items: stretch;
   }
-  .catalog__filters-close {
-    display: block;
+  .catalog__sort {
+    width: 100%;
   }
 }
 </style>

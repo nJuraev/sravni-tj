@@ -52,7 +52,7 @@ const bankStatusOptions = [
 ]
 function emptyBankForm(): BankPayload {
   return {
-    name_ru: '', name_tg: '', slug: '', status: 'active', is_partner: false,
+    name_ru: '', name_tg: '', slug: '', status: 'active', is_partner: false, sort_coefficient: 0,
     contact_email: '', website: '', phone: '', address_ru: '', address_tg: '',
     about_ru: '', about_tg: '', logo_url: '',
   }
@@ -101,7 +101,7 @@ function openBankEdit() {
   const b = bank.value
   Object.assign(bankForm, {
     name_ru: b.name_ru, name_tg: b.name_tg ?? '', slug: b.slug, status: b.status,
-    is_partner: b.is_partner, contact_email: b.contact_email ?? '', website: b.website ?? '',
+    is_partner: b.is_partner, sort_coefficient: b.sort_coefficient, contact_email: b.contact_email ?? '', website: b.website ?? '',
     phone: b.phone ?? '', address_ru: b.address_ru ?? '', address_tg: b.address_tg ?? '',
     about_ru: b.about_ru ?? '', about_tg: b.about_tg ?? '', logo_url: b.logo_url ?? '',
   })
@@ -301,6 +301,7 @@ const columns: DataTableColumns<RowWithSpan> = [
             <n-descriptions-item label="Slug"><code>{{ bank?.slug }}</code></n-descriptions-item>
             <n-descriptions-item label="Статус">{{ bank?.status }}</n-descriptions-item>
             <n-descriptions-item label="Партнёр">{{ bank?.is_partner ? 'да' : 'нет' }}</n-descriptions-item>
+            <n-descriptions-item label="Коэф. сортировки">{{ bank?.sort_coefficient }}</n-descriptions-item>
             <n-descriptions-item label="Email">{{ bank?.contact_email ?? '—' }}</n-descriptions-item>
             <n-descriptions-item label="Сайт">
               <a v-if="bank?.website" :href="bank.website" target="_blank" rel="noopener noreferrer">{{ bank.website }}</a>
@@ -379,9 +380,14 @@ const columns: DataTableColumns<RowWithSpan> = [
               <n-input v-model:value="bankForm.about_tg" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" />
             </n-form-item>
           </div>
-          <n-form-item label="Партнёр">
-            <n-switch v-model:value="bankForm.is_partner" />
-          </n-form-item>
+          <div class="grid2">
+            <n-form-item label="Партнёр">
+              <n-switch v-model:value="bankForm.is_partner" />
+            </n-form-item>
+            <n-form-item label="Коэф. сортировки" :validation-status="bankFieldErrors.sort_coefficient ? 'error' : undefined" :feedback="bankFieldErrors.sort_coefficient ?? 'Дефолтная сортировка каталога: больше — выше в выдаче'">
+              <n-input-number v-model:value="bankForm.sort_coefficient" style="width: 100%" />
+            </n-form-item>
+          </div>
         </n-space>
       </n-form>
       <template #footer>
