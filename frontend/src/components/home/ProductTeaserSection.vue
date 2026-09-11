@@ -5,6 +5,7 @@ import RouterLink from '@/components/nav/LocaleLink.vue'
 import type { Category, Product } from '@/types/api'
 import { useApi } from '@/composables/useApi'
 import { ApiError } from '@/api/errors'
+import { DEFAULT_SORT_BY_CATEGORY } from '@/composables/useCatalogQuery'
 import ProductCard from '@/components/catalog/ProductCard.vue'
 import SkeletonCard from '@/components/ui/SkeletonCard.vue'
 
@@ -23,9 +24,15 @@ const products = ref<Product[]>([])
 
 // Awaited (not onMounted, which never fires server-side) so SSR renders real products.
 try {
-  // Дефолтная сортировка эндпоинта уже «лучшее предложение первым»
-  // (credits: rate_min asc, deposits: -rate_max desc) — доп. sort не нужен.
-  const res = await api.getProducts({ category: props.category, per_page: 3 })
+  // Топ должен быть «лучшее предложение первым» строго по ставке — коэффициент
+  // банка (см. ProductController::paginateDiversifiedByDefault) тут не годится:
+  // он бы отдал приоритет одному банку и забил им весь топ. Поэтому передаём
+  // sort явно (applySort-ветка), где коэффициент — лишь тай-брейк при равной ставке.
+  const res = await api.getProducts({
+    category: props.category,
+    sort: DEFAULT_SORT_BY_CATEGORY[props.category],
+    per_page: 3,
+  })
   products.value = res.data
   status.value = res.data.length === 0 ? 'error' : 'loaded'
 } catch (err) {

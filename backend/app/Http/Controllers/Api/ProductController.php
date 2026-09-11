@@ -10,9 +10,9 @@ use App\Http\Resources\ProductResource;
 use App\Models\Bank;
 use App\Models\Product;
 use Illuminate\Contracts\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 /**
@@ -129,20 +129,18 @@ class ProductController extends Controller
         // как бейджи (attachAvailableCurrencies), а не отдельными карточками.
         $representativeIds = $this->dedupeToGroupRepresentatives($query);
 
-        $finalQuery = Product::query()
-            ->whereIn('id', $representativeIds)
-            ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates']);
+        $page = (int) $request->integer('page', 1);
 
         if ($request->filled('sort')) {
+            $finalQuery = Product::query()
+                ->whereIn('id', $representativeIds)
+                ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates']);
             $this->applySort($finalQuery, (string) $request->input('sort'));
-        } else {
-            $this->applyDefaultSort($finalQuery, $defaultSort);
-        }
 
-        $paginator = $finalQuery->paginate(
-            perPage: $perPage,
-            page: (int) $request->integer('page', 1),
-        );
+            $paginator = $finalQuery->paginate(perPage: $perPage, page: $page);
+        } else {
+            $paginator = $this->paginateDiversifiedByDefault($representativeIds, $defaultSort, $perPage, $page);
+        }
 
         $this->attachAvailableCurrencies($paginator->getCollection());
 
@@ -186,7 +184,7 @@ class ProductController extends Controller
      * Игнорирует численные фильтры запроса (сумма/срок/ставка/валюта) —
      * бейджи показывают, что вообще доступно, а не что прошло фильтр.
      */
-    private function attachAvailableCurrencies(EloquentCollection $products): void
+    private function attachAvailableCurrencies(Collection $products): void
     {
         $sourceUrlIds = $products->pluck('source_url_id')->filter()->unique()->values();
 
@@ -373,15 +371,19 @@ class ProductController extends Controller
     }
 
     /**
-     * Дефолтная сортировка (когда клиент не передал ?sort): сперва по ручному
-     * коэффициенту приоритета банка (banks.sort_coefficient, больше — выше),
-     * затем — исходный дефолт эндпоинта (ставка/срок) как тай-брейк.
-     * Явный выбор сортировки пользователем (?sort=...) коэффициент игнорирует —
-     * applySort() используется вместо этого метода.
+     * Дефолтная выдача (когда клиент не передал ?sort): приоритет — ручной
+     * коэффициент банка (banks.sort_coefficient, больше — выше), внутри банка —
+     * исходный дефолт эндпоинта (ставка/срок). НО чистая SQL ORDER BY тут не
+     * годится: если у банка с высоким коэффициентом много продуктов, они все
+     * встанут подряд и «забьют» топ одним банком — ровно то, из-за чего эту
+     * диверсификацию и добавили. Поэтому сортируем в PHP и раскладываем
+     * жадным алгоритмом по банкам (roundRobinByBank), а страницу пагинации
+     * нарезаем вручную. Явный ?sort= коэффициент игнорирует — applySort() ниже.
      *
-     * @param  Builder<Product>  $query
+     * @param  array<int, int>  $ids  id продуктов-представителей после дедупа/фильтров
+     * @return LengthAwarePaginator<int, Product>
      */
-    private function applyDefaultSort(Builder $query, string $defaultSort): void
+    private function paginateDiversifiedByDefault(array $ids, string $defaultSort, int $perPage, int $page): LengthAwarePaginator
     {
         $direction = 'asc';
         $field = $defaultSort;
@@ -391,14 +393,94 @@ class ProductController extends Controller
             $field = substr($defaultSort, 1);
         }
 
-        $query
-            ->orderByDesc(Bank::query()->select('sort_coefficient')->whereColumn('banks.id', 'products.bank_id'))
-            ->orderBy($field, $direction)
-            ->orderBy('id', 'asc');
+        // Ранжируем ВСЕ отфильтрованные строки (не только страницу) по
+        // [коэффициент банка DESC, дефолтное поле, id] — этот порядок и
+        // определяет очередь каждого банка для диверсификации ниже.
+        $rankedRows = Product::query()
+            ->join('banks', 'banks.id', '=', 'products.bank_id')
+            ->whereIn('products.id', $ids)
+            ->orderByDesc('banks.sort_coefficient')
+            ->orderBy('products.'.$field, $direction)
+            ->orderBy('products.id')
+            ->get(['products.id as id', 'products.bank_id as bank_id']);
+
+        $orderedIds = $this->roundRobinByBank($rankedRows);
+        $total = count($orderedIds);
+        $pageIds = array_slice($orderedIds, ($page - 1) * $perPage, $perPage);
+
+        $modelsById = Product::query()
+            ->whereIn('id', $pageIds)
+            ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates'])
+            ->get()
+            ->keyBy('id');
+
+        $items = Collection::make($pageIds)->map(fn (int $id) => $modelsById[$id])->filter()->values();
+
+        return new LengthAwarePaginator($items, $total, $perPage, $page);
     }
 
     /**
-     * Сортировка: field или -field (минус = по убыванию). Дефолт задаёт эндпоинт.
+     * Раскладывает уже проранжированные строки по банкам (сохраняя порядок
+     * внутри банка — по коэффициенту/ставке) и жадно собирает результат так,
+     * чтобы соседние карточки не совпадали по банку: на каждом шаге берём
+     * следующий id у банка с НАИБОЛЬШИМ остатком очереди среди тех, что не
+     * совпадают с только что поставленным (тай-брейк — исходный приоритет
+     * банка). Простой round-robin («по одному от каждого по кругу») этого не
+     * гарантирует — при перекосе (например, 3 продукта у одного банка против
+     * 1+1 у остальных) он всё равно сталкивает лишние продукты в хвосте;
+     * жадный выбор «у кого больше всего осталось» — стандартное решение
+     * задачи «расставить так, чтобы одинаковые не стояли рядом» и не
+     * склеивает их, пока это математически возможно. Склейка неизбежна,
+     * только когда один банк — единственный, у кого вообще остались продукты.
+     *
+     * @param  Collection<int, Product>  $rows
+     * @return array<int, int>
+     */
+    private function roundRobinByBank(Collection $rows): array
+    {
+        $byBank = [];
+        $bankPriority = [];
+        foreach ($rows as $row) {
+            if (! isset($bankPriority[$row->bank_id])) {
+                $bankPriority[$row->bank_id] = count($bankPriority);
+            }
+            $byBank[$row->bank_id][] = $row->id;
+        }
+
+        $result = [];
+        $lastBank = null;
+
+        while ($byBank !== []) {
+            $bestBank = null;
+            $bestKey = null;
+
+            foreach ($byBank as $bankId => $queue) {
+                if ($bankId === $lastBank && count($byBank) > 1) {
+                    continue;
+                }
+
+                // [-остаток, приоритет]: больше остаток — раньше; при равенстве — выше коэффициент.
+                $key = [-count($queue), $bankPriority[$bankId]];
+                if ($bestKey === null || $key < $bestKey) {
+                    $bestKey = $key;
+                    $bestBank = $bankId;
+                }
+            }
+
+            $result[] = array_shift($byBank[$bestBank]);
+            if ($byBank[$bestBank] === []) {
+                unset($byBank[$bestBank]);
+            }
+            $lastBank = $bestBank;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Явная сортировка (?sort=field|-field, минус = по убыванию). Тай-брейк —
+     * коэффициент банка (при равном значении поля выгоднее продукт банка с
+     * более высоким приоритетом), затем id для детерминированной пагинации.
      *
      * @param  Builder<Product>  $query
      */
@@ -418,7 +500,7 @@ class ProductController extends Controller
         }
 
         $query->orderBy($field, $direction)
-            // Стабильный вторичный ключ для детерминированной пагинации.
+            ->orderByDesc(Bank::query()->select('sort_coefficient')->whereColumn('banks.id', 'products.bank_id'))
             ->orderBy('id', 'asc');
     }
 }

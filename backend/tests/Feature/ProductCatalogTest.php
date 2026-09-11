@@ -351,6 +351,28 @@ class ProductCatalogTest extends TestCase
             ->assertJsonPath('data.1.id', (int) $cheap->id);
     }
 
+    public function test_default_sort_diversifies_high_coefficient_bank_instead_of_stacking_it(): void
+    {
+        $priorityBank = Bank::factory()->create(['sort_coefficient' => 10]);
+        $otherBankA = Bank::factory()->create(['sort_coefficient' => 0]);
+        $otherBankB = Bank::factory()->create(['sort_coefficient' => 0]);
+
+        // Банк с высоким коэф имеет 3 продукта — без диверсификации все 3 встали
+        // бы подряд первыми, вытеснив остальные банки с главной/топа за экран.
+        Product::factory()->for($priorityBank, 'bank')->credit()->count(3)->create();
+        Product::factory()->for($otherBankA, 'bank')->credit()->create();
+        Product::factory()->for($otherBankB, 'bank')->credit()->create();
+
+        $response = $this->getJson('/api/products/credits')->assertOk();
+        $bankIds = collect($response->json('data'))->pluck('bank.id');
+
+        $consecutiveSameBank = $bankIds->zip($bankIds->skip(1))
+            ->filter(fn ($pair) => $pair[1] !== null && $pair[0] === $pair[1])
+            ->count();
+
+        $this->assertSame(0, $consecutiveSameBank, 'no two adjacent cards should share a bank when alternatives exist');
+    }
+
     public function test_explicit_sort_ignores_bank_coefficient(): void
     {
         $priorityBank = Bank::factory()->create(['sort_coefficient' => 10]);

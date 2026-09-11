@@ -68,7 +68,7 @@ describe('ProductTeaserSection', () => {
     const wrapper = mountSection()
     await flushPromises()
 
-    expect(api.getProducts).toHaveBeenCalledWith('ru', { category: 'credit', per_page: 3 })
+    expect(api.getProducts).toHaveBeenCalledWith('ru', { category: 'credit', sort: 'rate_min', per_page: 3 })
     expect(wrapper.findAllComponents(ProductCard)).toHaveLength(3)
   })
 
