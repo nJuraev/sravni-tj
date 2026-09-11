@@ -3,10 +3,12 @@ import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NDataTable, NButton, NInput, NInputNumber, NSelect, NTag, NSpace, NModal, NCard,
-  NForm, NFormItem, NSwitch, NTabs, NTabPane, NCheckbox, NCheckboxGroup, NIcon,
+  NForm, NFormItem, NSwitch, NTabs, NTabPane, NCheckbox, NCheckboxGroup, NIcon, NTooltip,
   NDescriptions, NDescriptionsItem, useMessage, useDialog, type DataTableColumns,
 } from 'naive-ui'
-import { AddOutline, ArrowBackOutline } from '@vicons/ionicons5'
+import {
+  AddOutline, ArrowBackOutline, PowerOutline, CreateOutline, TrashOutline, OpenOutline,
+} from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
 import { pipelineFreshness } from '@/lib/format'
@@ -258,15 +260,33 @@ const columns: DataTableColumns<RowWithSpan> = [
       () => STATUS_META[p.status]?.label ?? p.status),
   },
   {
-    title: '', key: 'actions', width: 270, align: 'right',
-    render: (p) => h(NSpace, { justify: 'end', size: 8 }, () => [
-      h(NButton, { size: 'small', type: p.status === 'active' ? 'default' : 'primary', secondary: true, onClick: () => toggle(p) },
-        () => (p.status === 'active' ? 'Откл.' : 'Вкл.')),
-      h(NButton, { size: 'small', quaternary: true, onClick: () => openEdit(p) }, () => 'Изм.'),
-      h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => remove(p) }, () => 'Удалить'),
+    title: '', key: 'actions', width: 160, align: 'right',
+    render: (p) => h(NSpace, { justify: 'end', size: 4 }, () => [
+      p.source_url
+        ? iconLink('Оригинал на сайте банка', OpenOutline, p.source_url)
+        : null,
+      iconButton(p.status === 'active' ? 'Отключить' : 'Включить', PowerOutline, p.status === 'active' ? 'default' : 'primary', () => toggle(p)),
+      iconButton('Изменить', CreateOutline, 'default', () => openEdit(p)),
+      iconButton('Удалить', TrashOutline, 'error', () => remove(p)),
     ]),
   },
 ]
+
+function iconButton(tooltip: string, icon: typeof PowerOutline, type: 'default' | 'primary' | 'error', onClick: () => void) {
+  return h(NTooltip, null, {
+    trigger: () => h(NButton, { size: 'small', quaternary: true, circle: true, type, onClick },
+      { icon: () => h(NIcon, null, () => h(icon)) }),
+    default: () => tooltip,
+  })
+}
+
+function iconLink(tooltip: string, icon: typeof OpenOutline, href: string) {
+  return h(NTooltip, null, {
+    trigger: () => h(NButton, { size: 'small', quaternary: true, circle: true, tag: 'a', href, target: '_blank', rel: 'noopener noreferrer' },
+      { icon: () => h(NIcon, null, () => h(icon)) }),
+    default: () => tooltip,
+  })
+}
 </script>
 
 <template>

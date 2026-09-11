@@ -3,9 +3,9 @@ import { h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NDataTable, NButton, NInput, NInputNumber, NSelect, NTag, NSpace, NModal, NCard, NForm,
-  NFormItem, NSwitch, NIcon, useMessage, useDialog, type DataTableColumns,
+  NFormItem, NSwitch, NIcon, NTooltip, useMessage, useDialog, type DataTableColumns,
 } from 'naive-ui'
-import { AddOutline, SearchOutline } from '@vicons/ionicons5'
+import { AddOutline, SearchOutline, CubeOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
 import { pipelineFreshness } from '@/lib/format'
@@ -144,14 +144,22 @@ const columns: DataTableColumns<AdminBank> = [
     },
   },
   {
-    title: '', key: 'actions', width: 300, align: 'right',
-    render: (b) => h(NSpace, { justify: 'end', size: 8 }, () => [
-      h(NButton, { size: 'small', secondary: true, type: 'primary', onClick: () => router.push({ name: 'admin-bank', params: { id: b.id } }) }, () => 'Продукты'),
-      h(NButton, { size: 'small', quaternary: true, onClick: () => openEdit(b) }, () => 'Изм.'),
-      h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => remove(b) }, () => 'Удалить'),
+    title: '', key: 'actions', width: 130, align: 'right',
+    render: (b) => h(NSpace, { justify: 'end', size: 4 }, () => [
+      iconButton('Продукты', CubeOutline, 'primary', () => router.push({ name: 'admin-bank', params: { id: b.id } })),
+      iconButton('Изменить', CreateOutline, 'default', () => openEdit(b)),
+      iconButton('Удалить', TrashOutline, 'error', () => remove(b)),
     ]),
   },
 ]
+
+function iconButton(tooltip: string, icon: typeof CubeOutline, type: 'default' | 'primary' | 'error', onClick: () => void) {
+  return h(NTooltip, null, {
+    trigger: () => h(NButton, { size: 'small', quaternary: true, circle: true, type, onClick },
+      { icon: () => h(NIcon, null, () => h(icon)) }),
+    default: () => tooltip,
+  })
+}
 </script>
 
 <template>
