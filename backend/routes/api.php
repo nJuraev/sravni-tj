@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\ArticleController as AdminArticleController;
 use App\Http\Controllers\Admin\ArticleTagController as AdminArticleTagController;
 use App\Http\Controllers\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Admin\BankController as AdminBankController;
+use App\Http\Controllers\Admin\CurrencyRateController as AdminCurrencyRateController;
 use App\Http\Controllers\Admin\FinancePostController as AdminFinancePostController;
 use App\Http\Controllers\Admin\LeadController as AdminLeadController;
 use App\Http\Controllers\Admin\PostTopicController as AdminPostTopicController;
@@ -96,16 +97,18 @@ Route::prefix('admin')->group(function (): void {
         Route::post('logout', [AdminAuthController::class, 'logout']);
 
         // Банки + продукты конкретного банка.
-        Route::get('banks/{bank}/products', [AdminProductController::class, 'index'])
+        Route::get('banks/{bank}/products', [AdminProductController::class, 'forBank'])
             ->whereNumber('bank');
         Route::apiResource('banks', AdminBankController::class)->whereNumber('bank');
 
-        // Продукты (CRUD без index — список идёт через банк) + быстрый toggle.
+        // Продукты: index — все продукты всех банков (с фильтрами category/status/bank_id/search) + быстрый toggle.
         Route::patch('products/{product}/toggle', [AdminProductController::class, 'toggle'])
             ->whereNumber('product');
         Route::apiResource('products', AdminProductController::class)
-            ->except('index')
             ->whereNumber('product');
+
+        // Курсы валют банков (только просмотр — пишет парсер cmd/rates).
+        Route::get('currency-rates', [AdminCurrencyRateController::class, 'index']);
 
         // Заявки (просмотр + удаление).
         Route::get('leads', [AdminLeadController::class, 'index']);

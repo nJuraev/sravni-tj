@@ -242,3 +242,23 @@ export type ArticlePayload = Omit<
   AdminArticle,
   'id' | 'category' | 'tags' | 'telegram_sent_at' | 'created_at' | 'updated_at'
 >
+
+export type RateCategory = 'cash' | 'transfer'
+
+export interface AdminCurrencyRateBankRef {
+  id: number
+  name_ru: string
+  name_tg: string | null
+}
+
+export interface AdminCurrencyRate {
+  id: number
+  bank_id: number
+  bank?: AdminCurrencyRateBankRef | null
+  currency: Currency
+  category: RateCategory
+  buy: number | null
+  sell: number | null
+  rate_date: string | null
+  parsed_at: string | null
+}

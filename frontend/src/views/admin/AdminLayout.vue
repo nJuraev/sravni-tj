@@ -17,10 +17,12 @@ import {
 } from 'naive-ui'
 import {
   BusinessOutline,
+  CashOutline,
   DocumentTextOutline,
   NewspaperOutline,
   PaperPlaneOutline,
   PeopleOutline,
+  PricetagsOutline,
   LogOutOutline,
   PersonCircleOutline,
 } from '@vicons/ionicons5'
@@ -40,7 +42,9 @@ function renderIcon(icon: unknown) {
 const menuOptions = computed<MenuOption[]>(() => {
   const items: MenuOption[] = [
     { label: 'Банки', key: 'admin-banks', icon: renderIcon(BusinessOutline) },
+    { label: 'Все продукты', key: 'admin-products', icon: renderIcon(PricetagsOutline) },
     { label: 'Заявки', key: 'admin-leads', icon: renderIcon(DocumentTextOutline) },
+    { label: 'Курсы валют', key: 'admin-currency-rates', icon: renderIcon(CashOutline) },
     { label: 'Статьи блога', key: 'admin-articles', icon: renderIcon(NewspaperOutline) },
     { label: 'Финансовые посты', key: 'admin-finance-posts', icon: renderIcon(PaperPlaneOutline) },
   ]

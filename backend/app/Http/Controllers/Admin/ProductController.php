@@ -31,9 +31,37 @@ class ProductController extends Controller
     private const ADMIN_LOCKED_FIELDS = ['category', 'subcategory', 'features'];
 
     /**
+     * GET /api/admin/products — все продукты всех банков, с быстрыми фильтрами.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'category' => ['sometimes', Rule::in(['credit', 'deposit', 'installment'])],
+            'status' => ['sometimes', Rule::in(['active', 'draft', 'hidden', 'outdated'])],
+            'bank_id' => ['sometimes', 'integer'],
+            'search' => ['sometimes', 'string', 'max:255'],
+        ]);
+
+        $products = Product::query()
+            ->with('bank')
+            ->when($filters['category'] ?? null, fn ($q, $v) => $q->where('category', $v))
+            ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
+            ->when($filters['bank_id'] ?? null, fn ($q, $v) => $q->where('bank_id', $v))
+            ->when($filters['search'] ?? null, fn ($q, $v) => $q->where(
+                fn ($q) => $q->where('name_ru', 'ilike', "%{$v}%")->orWhere('name_tg', 'ilike', "%{$v}%")
+            ))
+            ->orderByRaw("array_position(ARRAY['active','draft','hidden','outdated'], status)")
+            ->orderBy('category')
+            ->orderBy('name_ru')
+            ->get();
+
+        return AdminProductResource::collection($products)->response();
+    }
+
+    /**
      * GET /api/admin/banks/{bank}/products.
      */
-    public function index(Bank $bank): JsonResponse
+    public function forBank(Bank $bank): JsonResponse
     {
         $products = $bank->products()
             ->orderByRaw("array_position(ARRAY['active','draft','hidden','outdated'], status)")

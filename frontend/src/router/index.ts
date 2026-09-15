@@ -106,7 +106,13 @@ const adminRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/BankDetailView.vue'),
         props: (route) => ({ id: Number(route.params.id) }),
       },
+      { path: 'products', name: 'admin-products', component: () => import('@/views/admin/ProductsView.vue') },
       { path: 'leads', name: 'admin-leads', component: () => import('@/views/admin/LeadsView.vue') },
+      {
+        path: 'currency-rates',
+        name: 'admin-currency-rates',
+        component: () => import('@/views/admin/CurrencyRatesView.vue'),
+      },
       {
         path: 'finance-posts',
         name: 'admin-finance-posts',

@@ -5,6 +5,7 @@ import type {
   AdminArticleCategory,
   AdminArticleTag,
   AdminBank,
+  AdminCurrencyRate,
   AdminFinancePost,
   AdminLead,
   AdminPostTopic,
@@ -119,6 +120,17 @@ export const adminApi = {
   listBankProducts(bankId: number): Promise<CollectionResponse<AdminProduct>> {
     return request<CollectionResponse<AdminProduct>>(`/banks/${bankId}/products`)
   },
+  listProducts(
+    params: { category?: string; status?: string; bankId?: number; search?: string } = {},
+  ): Promise<CollectionResponse<AdminProduct>> {
+    const qs = new URLSearchParams()
+    if (params.category) qs.set('category', params.category)
+    if (params.status) qs.set('status', params.status)
+    if (params.bankId) qs.set('bank_id', String(params.bankId))
+    if (params.search) qs.set('search', params.search)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<CollectionResponse<AdminProduct>>(`/products${suffix}`)
+  },
   getProduct(id: number): Promise<ItemResponse<AdminProduct>> {
     return request<ItemResponse<AdminProduct>>(`/products/${id}`)
   },
@@ -149,6 +161,28 @@ export const adminApi = {
   },
   deleteLead(id: number): Promise<void> {
     return request<void>(`/leads/${id}`, { method: 'DELETE' })
+  },
+
+  // Курсы валют банков
+  listCurrencyRates(
+    params: {
+      bank_id?: number
+      currency?: string
+      category?: string
+      rate_date?: string
+      page?: number
+      per_page?: number
+    } = {},
+  ): Promise<Paginated<AdminCurrencyRate>> {
+    const qs = new URLSearchParams()
+    if (params.bank_id) qs.set('bank_id', String(params.bank_id))
+    if (params.currency) qs.set('currency', params.currency)
+    if (params.category) qs.set('category', params.category)
+    if (params.rate_date) qs.set('rate_date', params.rate_date)
+    if (params.page) qs.set('page', String(params.page))
+    if (params.per_page) qs.set('per_page', String(params.per_page))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<Paginated<AdminCurrencyRate>>(`/currency-rates${suffix}`)
   },
 
   // Users
