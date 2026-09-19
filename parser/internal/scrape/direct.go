@@ -2,6 +2,7 @@ package scrape
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"io"
@@ -156,7 +157,65 @@ var (
 	// reNoiseScheme — телефон/мессенджер-схемы в href (banner "Позвоните нам",
 	// WhatsApp-виджеты и т.п.) — для discovery шум: никогда не страница продукта.
 	reNoiseScheme = regexp.MustCompile(`(?i)^(tel|mailto|sms|whatsapp):`)
+	// reNextData вытаскивает Next.js SSG/SSR state-блоб — на части банков
+	// (напр. alif.tj, Pages Router) это ЕДИНСТВЕННОЕ место, где лежат данные
+	// неактивной вкладки клиентского виджета (напр. тарифы по валюте, которая
+	// не выбрана по умолчанию): reCut режет этот <script> как любой другой,
+	// и такие данные никогда не попадали в markdown для AI — подтверждённая
+	// причина бага (alif.tj/ru/deposit/muhlatnok: ставка в сомони "До 15%"
+	// лежит только тут, видимый текст отдаёт только ставку в долларах "До 7%"
+	// для обеих валют). НЕ трогает reCut/extractLinksOnly — отдельный
+	// аддитивный проход поверх сырого HTML, до любой другой очистки.
+	reNextData = regexp.MustCompile(`(?is)<script\s+id="__NEXT_DATA__"[^>]*>(.*?)</script>`)
 )
+
+// nextDataNoiseKeys — верхнеуровневые ключи props.pageProps, повторяющиеся
+// шаблонным шумом на разных страницах alif.tj (шапка/меню, форма заявки,
+// "как пополнить", "проверьте нас", карточки "почему выбирают нас", SEO-мета) —
+// подтверждено сравнением реальных __NEXT_DATA__ с 2+ разных страниц Alif
+// (deposit/muhlatnok, deposit/maqsad): одинаковые названия блоков, ноль
+// продуктовых данных. НЕ дизайн-специфичный allowlist (как css_hints,
+// см. specs/parser.md — хрупко к вёрстке) — denylist общих по ИМЕНИ ключей,
+// остальное (тарифы/калькулятор/баннер) остаётся и адаптируется само, если
+// банк добавит новый блок.
+var nextDataNoiseKeys = []string{
+	"layout", "seo", "consultation", "withdrawAndTopUp",
+	"depositCheckUs", "depositReasonsToChoose", "locales", "locale", "cards",
+}
+
+// extractNextData возвращает компактный JSON-текст props.pageProps без
+// nextDataNoiseKeys, или "" если на странице нет __NEXT_DATA__/не распарсился/
+// пуст после чистки. Best-effort и абсолютно не фатальный — на страницах без
+// Next.js (подавляющее большинство банков) просто no-op.
+func extractNextData(raw string) string {
+	m := reNextData.FindStringSubmatch(raw)
+	if len(m) < 2 {
+		return ""
+	}
+	var doc struct {
+		Props struct {
+			PageProps map[string]json.RawMessage `json:"pageProps"`
+		} `json:"props"`
+	}
+	if err := json.Unmarshal([]byte(m[1]), &doc); err != nil {
+		return ""
+	}
+	pageProps := doc.Props.PageProps
+	if len(pageProps) == 0 {
+		return ""
+	}
+	for _, k := range nextDataNoiseKeys {
+		delete(pageProps, k)
+	}
+	if len(pageProps) == 0 {
+		return ""
+	}
+	out, err := json.Marshal(pageProps)
+	if err != nil || len(out) == 0 {
+		return ""
+	}
+	return "\n\n--- Структурированные данные страницы (JSON, могут содержать условия для вкладок/валют, не показанных в тексте выше) ---\n" + string(out)
+}
 
 // hiddenTagNames — теги, для которых собираются reHiddenUnconditional/
 // reHiddenByClass (см. var-блок выше).
@@ -309,6 +368,7 @@ const dedupMinLen = 20
 // (Direct.Scrape/Browser.Scrape) — discovery идёт через extractLinksOnly
 // (другой вход: нужны ссылки из шапки/меню, которые здесь вырезаются).
 func htmlToText(raw string) string {
+	nextData := extractNextData(raw) // до reCut — тот вырежет <script> целиком
 	s := reCut.ReplaceAllString(raw, "\n")
 	s = reNoiseBlocks.ReplaceAllString(s, "\n")
 	s = reHeader.ReplaceAllString(s, "\n")
@@ -340,7 +400,7 @@ func htmlToText(raw string) string {
 		}
 	}
 	out = dedupLines(out)
-	return reBlankLines.ReplaceAllString(strings.Join(out, "\n"), "\n\n")
+	return reBlankLines.ReplaceAllString(strings.Join(out, "\n"), "\n\n") + nextData
 }
 
 // ScrapeForLinks — вход для discovery (internal/discover): вместо полного
