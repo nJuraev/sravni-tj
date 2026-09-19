@@ -181,9 +181,28 @@ class ProductController extends Controller
             'rate_min' => ['required', 'numeric', 'min:0', 'max:100'],
             'rate_max' => ['required', 'numeric', 'min:0', 'max:100', 'gte:rate_min'],
             'amount_min' => ['nullable', 'numeric', 'min:0'],
-            'amount_max' => ['nullable', 'numeric', 'min:0', 'gte:amount_min'],
+            'amount_max' => [
+                'nullable', 'numeric', 'min:0',
+                // gte:amount_min ломается, когда amount_min не задан (нативное
+                // сравнение Laravel считает null и число разными типами и
+                // всегда фейлит) — сравниваем сами, только если оба заданы.
+                function ($attribute, $value, $fail) use ($request) {
+                    $min = $request->input('amount_min');
+                    if ($value !== null && $min !== null && $value < $min) {
+                        $fail('Сумма макс должна быть больше или равна сумме мин.');
+                    }
+                },
+            ],
             'term_min' => ['nullable', 'integer', 'min:1'],
-            'term_max' => ['nullable', 'integer', 'min:1', 'gte:term_min'],
+            'term_max' => [
+                'nullable', 'integer', 'min:1',
+                function ($attribute, $value, $fail) use ($request) {
+                    $min = $request->input('term_min');
+                    if ($value !== null && $min !== null && $value < $min) {
+                        $fail('Срок макс должен быть больше или равен сроку мин.');
+                    }
+                },
+            ],
             'features' => ['nullable', 'array'],
             // null допустим: парсер хранит неизвестные признаки как null;
             // ниже features нормализуются только по известным ключам.

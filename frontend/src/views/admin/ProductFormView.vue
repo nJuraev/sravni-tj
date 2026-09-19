@@ -211,12 +211,20 @@ async function save() {
           </n-form-item>
         </div>
         <div class="grid2">
-          <n-form-item label="Сумма мин"><n-input-number v-model:value="form.amount_min" :min="0" style="width: 100%" clearable /></n-form-item>
-          <n-form-item label="Сумма макс"><n-input-number v-model:value="form.amount_max" :min="0" style="width: 100%" clearable /></n-form-item>
+          <n-form-item label="Сумма мин" :validation-status="fieldErrors.amount_min ? 'error' : undefined" :feedback="fieldErrors.amount_min">
+            <n-input-number v-model:value="form.amount_min" :min="0" style="width: 100%" clearable />
+          </n-form-item>
+          <n-form-item label="Сумма макс" :validation-status="fieldErrors.amount_max ? 'error' : undefined" :feedback="fieldErrors.amount_max">
+            <n-input-number v-model:value="form.amount_max" :min="0" style="width: 100%" clearable />
+          </n-form-item>
         </div>
         <div class="grid2">
-          <n-form-item label="Срок мин, мес"><n-input-number v-model:value="form.term_min" :min="1" style="width: 100%" clearable /></n-form-item>
-          <n-form-item label="Срок макс, мес"><n-input-number v-model:value="form.term_max" :min="1" style="width: 100%" clearable /></n-form-item>
+          <n-form-item label="Срок мин, мес" :validation-status="fieldErrors.term_min ? 'error' : undefined" :feedback="fieldErrors.term_min">
+            <n-input-number v-model:value="form.term_min" :min="1" style="width: 100%" clearable />
+          </n-form-item>
+          <n-form-item label="Срок макс, мес" :validation-status="fieldErrors.term_max ? 'error' : undefined" :feedback="fieldErrors.term_max">
+            <n-input-number v-model:value="form.term_max" :min="1" style="width: 100%" clearable />
+          </n-form-item>
         </div>
 
         <div class="grid2">
