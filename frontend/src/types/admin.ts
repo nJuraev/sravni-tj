@@ -137,11 +137,6 @@ export type ProductPayload = Omit<
   | 'parsed_at'
   | 'created_at'
   | 'updated_at'
-  // Контент, извлекаемый только парсером — админка их не редактирует.
-  | 'key_conditions_ru'
-  | 'key_conditions_tg'
-  | 'documents_ru'
-  | 'documents_tg'
   | 'source_url'
 >
 

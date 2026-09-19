@@ -59,6 +59,7 @@ const activeKey = computed(() => {
   const name = route.name as string | undefined
   if (name === 'admin-bank') return 'admin-banks'
   if (name === 'admin-article' || name === 'admin-article-new') return 'admin-articles'
+  if (name === 'admin-product' || name === 'admin-product-new') return 'admin-products'
   return name ?? 'admin-banks'
 })
 
