@@ -268,4 +268,16 @@ async function save() {
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 @media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+/* Ключевые условия/документы — длинные предложения-теги: наивный n-tag по
+   умолчанию white-space: nowrap и вылезает за колонку формы. */
+:deep(.n-dynamic-tags) { width: 100%; }
+:deep(.n-dynamic-tags > div) { max-width: 100%; min-width: 0; }
+:deep(.n-dynamic-tags .n-tag) {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  word-break: break-word;
+  align-items: flex-start;
+}
 </style>
