@@ -200,9 +200,10 @@ class BankSourceUrlSeeder extends Seeder
                 // credit/deposit — через discovery (инструкции). installment «Насия»
                 // (рассрочка) — прямая страница внутри /loans, задаём явно. imon.tj —
                 // за Cloudflare, свой скрейпер не проходит (см. BankParseInstructionSeeder).
+                // /ru/-версия: banks.imon lang_url_rule требует primary СОДЕРЖИТ "/ru/".
                 'slug' => 'imon',
                 'credit_urls' => [],
-                'installment_urls' => [['url' => 'https://imon.tj/loans/nasiya', 'scraper' => 'browser']],
+                'installment_urls' => [['url' => 'https://imon.tj/ru/loans/nasiya', 'scraper' => 'browser']],
                 'deposit_urls' => [],
             ],
             [

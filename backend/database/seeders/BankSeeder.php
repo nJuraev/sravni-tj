@@ -150,6 +150,13 @@ class BankSeeder extends Seeder
                 'address_tg' => null,
                 'contact_email' => 'info@imon.tj',
                 'logo_url' => '/bank-logos/imon.ico',
+                // ru — сегмент /ru/ после домена (https://imon.tj/ru/loans/amonat),
+                // tj — дефолт, БЕЗ сегмента вовсе (https://imon.tj/loans/amonat).
+                // primary (bank_source_urls.start_url) должен быть ru-версией —
+                // deriveSecondaryURL требует primary СОДЕРЖИТ params['ru'] (см.
+                // parser.go:536), иначе секцию tj не выведет вообще.
+                'lang_url_rule_type' => 'path_replace',
+                'lang_url_rule_params' => json_encode(['ru' => '/ru/', 'tj' => ''], JSON_UNESCAPED_UNICODE),
             ],
             [
                 'slug' => 'tawhidbank',

@@ -288,16 +288,20 @@ class BankParseInstructionSeeder extends Seeder
         ],
 
         // --- Имон Интернешнл (imon.tj) — Cloudflare, свой скрейпер не проходит ---
+        // start_url ЗАДАН как /ru/-версия (не дефолтная тадж.): banks.imon
+        // lang_url_rule_type=path_replace (ru='/ru/', tj='') требует, чтобы
+        // primary-URL СОДЕРЖАЛ "/ru/" — иначе deriveSecondaryURL не выводит
+        // tj-версию вообще (см. parser.go:536), и AI получает только один язык.
         [
             'bank' => 'Имон', 'kind' => 'product_discovery', 'category' => 'credit',
-            'start_url' => 'https://imon.tj/loans', 'menu_sections' => null,
-            'notes' => 'Каталог, карточки → /loans/<slug> (slug = транслит тадж. названия). Продукт «Насия» (/loans/nasiya) — это рассрочка, относить к installment, не credit.',
+            'start_url' => 'https://imon.tj/ru/loans', 'menu_sections' => null,
+            'notes' => 'Каталог, карточки → /ru/loans/<slug> (slug = транслит тадж. названия). Продукт «Насия» (/ru/loans/nasiya) — это рассрочка, относить к installment, не credit.',
             'scraper' => 'browser',
         ],
         [
             'bank' => 'Имон', 'kind' => 'product_discovery', 'category' => 'deposit',
-            'start_url' => 'https://imon.tj/deposits', 'menu_sections' => null,
-            'notes' => 'Каталог вкладов → /deposits/<slug>.',
+            'start_url' => 'https://imon.tj/ru/deposits', 'menu_sections' => null,
+            'notes' => 'Каталог вкладов → /ru/deposits/<slug>.',
             'scraper' => 'browser',
         ],
         // installment: /loans/nasiya — прямой источник в BankSourceUrlSeeder.
