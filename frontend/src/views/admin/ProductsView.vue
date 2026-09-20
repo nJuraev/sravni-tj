@@ -2,10 +2,10 @@
 import { h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NDataTable, NButton, NInput, NSelect, NTag, NSpace, NCard, NIcon, NTabs, NTabPane,
+  NDataTable, NButton, NInput, NSelect, NTag, NSpace, NCard, NIcon, NTabs, NTabPane, NTooltip,
   useMessage, useDialog, type DataTableColumns,
 } from 'naive-ui'
-import { SearchOutline } from '@vicons/ionicons5'
+import { SearchOutline, CreateOutline, OpenOutline } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
 import type { AdminProduct } from '@/types/admin'
@@ -108,8 +108,10 @@ const columns: DataTableColumns<AdminProduct> = [
     ]),
   },
   {
-    title: '', key: 'actions', width: 180, align: 'right',
-    render: (p) => h(NSpace, { justify: 'end', size: 8 }, () => [
+    title: '', key: 'actions', width: 230, align: 'right',
+    render: (p) => h(NSpace, { justify: 'end', size: 4, align: 'center' }, () => [
+      p.source_url ? iconLink('Оригинал на сайте банка', OpenOutline, p.source_url) : null,
+      iconButton('Изменить', CreateOutline, () => router.push({ name: 'admin-product', params: { id: p.id } })),
       h(NButton, {
         size: 'small', quaternary: true,
         onClick: () => router.push({ name: 'admin-bank', params: { id: p.bank_id } }),
@@ -118,6 +120,22 @@ const columns: DataTableColumns<AdminProduct> = [
     ]),
   },
 ]
+
+function iconButton(tooltip: string, icon: typeof CreateOutline, onClick: () => void) {
+  return h(NTooltip, null, {
+    trigger: () => h(NButton, { size: 'small', quaternary: true, circle: true, onClick },
+      { icon: () => h(NIcon, null, () => h(icon)) }),
+    default: () => tooltip,
+  })
+}
+
+function iconLink(tooltip: string, icon: typeof OpenOutline, href: string) {
+  return h(NTooltip, null, {
+    trigger: () => h(NButton, { size: 'small', quaternary: true, circle: true, tag: 'a', href, target: '_blank', rel: 'noopener noreferrer' },
+      { icon: () => h(NIcon, null, () => h(icon)) }),
+    default: () => tooltip,
+  })
+}
 </script>
 
 <template>
