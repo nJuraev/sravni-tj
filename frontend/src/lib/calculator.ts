@@ -29,9 +29,16 @@ export interface DepositInput {
 }
 
 export interface DepositResult {
+  /** interest before tax — the headline figure */
   income: number
+  /** principal + income (gross) */
   total: number
+  /** estimated withholding, 12% of income (ст. 238 НК РТ) — banks apply it at payout, shown as a footnote */
+  tax: number
 }
+
+/** Final withholding tax on deposit interest for individuals, ст. 238 НК РТ. */
+export const DEPOSIT_TAX_RATE = 0.12
 
 /**
  * Inputs valid per §5.3: P > 0, n >= 1, 0 <= r <= 100.
@@ -76,21 +83,21 @@ export function calcCredit(input: CreditInput): CreditResult | null {
 }
 
 /**
- * Deposit income.
+ * Deposit income (gross, before tax).
  * Simple: income = P*(r/100)*(n/12); total = P + income.
  * Compound (m per year): total = P*(1 + (r/100)/m)^(m*n/12); income = total - P.
+ * `tax` is an estimate of the 12% withholding banks apply at payout (ст. 238
+ * НК РТ) — informational footnote, already excluded from `income`/`total`.
  */
 export function calcDeposit(input: DepositInput): DepositResult | null {
   const { amount: P, termMonths: n, rate: r, capitalize, periodsPerYear: m } = input
   if (!isValidCalcInput({ amount: P, termMonths: n, rate: r })) return null
 
   const years = n / 12
-  if (capitalize && m >= 1) {
-    const total = P * Math.pow(1 + r / 100 / m, m * years)
-    return { income: total - P, total }
-  }
-  const income = P * (r / 100) * years
-  return { income, total: P + income }
+  const income =
+    capitalize && m >= 1 ? P * Math.pow(1 + r / 100 / m, m * years) - P : P * (r / 100) * years
+
+  return { income, total: P + income, tax: income * DEPOSIT_TAX_RATE }
 }
 
 export interface ScheduleRow {

@@ -3,7 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Locale, Product } from '@/types/api'
 import { calcCredit, calcDeposit, generateCreditSchedule, isValidCalcInput } from '@/lib/calculator'
-import { findRateTier } from '@/lib/rateTiers'
+import { resolveEffectiveRate } from '@/lib/rateTiers'
 import { formatDateShort, formatMoney, formatPercent } from '@/lib/format'
 import BaseTextField from '@/components/ui/BaseTextField.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
@@ -25,17 +25,17 @@ const state = reactive({
   periodsPerYear: 12,
 })
 
-// Pick the exact tier rate for the entered amount/term; fall back to the
-// product's min aggregate when no cell matches (e.g. out-of-range inputs).
-const effectiveRate = computed(() => {
-  const tier = findRateTier(
+// Exact tier rate for the entered amount/term when one matches; otherwise the
+// nearest tier by term (not a flat rate_min fallback — see resolveEffectiveRate).
+const effectiveRate = computed(() =>
+  resolveEffectiveRate(
     props.product.rate_tiers,
     Number(state.amount),
     Number(state.term),
     props.product.currency,
-  )
-  return tier ? tier.rate : props.product.rate_min
-})
+    props.product.rate_min,
+  ),
+)
 
 const inputValid = computed(() =>
   isValidCalcInput({
@@ -180,16 +180,19 @@ function date(value: Date): string {
       </div>
     </template>
 
-    <dl v-else-if="depositResult" class="calc__results">
-      <div class="calc__result calc__result--primary">
-        <dt>{{ t('calc.income') }}</dt>
-        <dd class="tabular">{{ money(depositResult.income) }}</dd>
-      </div>
-      <div class="calc__result">
-        <dt>{{ t('calc.total') }}</dt>
-        <dd class="tabular">{{ money(depositResult.total) }}</dd>
-      </div>
-    </dl>
+    <template v-else-if="depositResult">
+      <dl class="calc__results">
+        <div class="calc__result calc__result--primary">
+          <dt>{{ t('calc.income') }}</dt>
+          <dd class="tabular">{{ money(depositResult.income) }}</dd>
+        </div>
+        <div class="calc__result">
+          <dt>{{ t('calc.total') }}</dt>
+          <dd class="tabular">{{ money(depositResult.total) }}</dd>
+        </div>
+      </dl>
+      <p class="calc__tax-note">{{ t('calc.taxNote', { tax: money(depositResult.tax) }) }}</p>
+    </template>
   </section>
 </template>
 
@@ -228,6 +231,11 @@ function date(value: Date): string {
 .calc__hint {
   font-size: var(--fs-sm);
   color: var(--color-text-secondary);
+}
+.calc__tax-note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
 }
 .calc__results {
   display: flex;

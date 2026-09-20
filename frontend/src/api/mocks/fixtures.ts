@@ -123,6 +123,36 @@ const rawProducts: Array<Omit<Product, 'is_special'> & { is_special?: boolean }>
     parsed_at: '2026-06-05T01:00:00Z',
   },
   {
+    id: 104,
+    category: 'deposit',
+    subcategory: 'term',
+    currency: 'TJS',
+    name_ru: 'Срочный депозит',
+    name_tg: null,
+    description_ru: 'Срочный вклад без капитализации, ставка зависит только от срока (не от суммы).',
+    description_tg: null,
+    rate_min: 12.0,
+    rate_max: 15.0,
+    amount_min: 1000,
+    amount_max: 100000,
+    term_min: 6,
+    term_max: 24,
+    // Ставка зависит ТОЛЬКО от срока (amount_from/to = null у обоих тиров) —
+    // реальная сетка eskhata.com: ≤12 мес = 12%, >12 мес = 15%, любая сумма.
+    rate_tiers: [
+      { currency: 'TJS', amount_from: null, amount_to: null, term_from: 6, term_to: 12, rate: 12.0 },
+      { currency: 'TJS', amount_from: null, amount_to: null, term_from: 13, term_to: 24, rate: 15.0 },
+    ],
+    features: {
+      online_application: true,
+      no_guarantor: false,
+      capitalization: false,
+      replenishment: false,
+    },
+    bank: { id: 7, name_ru: 'Банк Эсхата', name_tg: 'Бонки Эсхата', is_partner: true },
+    parsed_at: '2026-06-05T03:20:00Z',
+  },
+  {
     id: 201,
     category: 'credit',
     subcategory: 'consumer',
