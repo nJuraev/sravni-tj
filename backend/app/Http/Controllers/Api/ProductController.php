@@ -36,6 +36,20 @@ class ProductController extends Controller
     private const CURRENCY_ORDER = ['TJS' => 0, 'USD' => 1, 'EUR' => 2];
 
     /**
+     * Ключ группы «валютные варианты ОДНОГО продукта». source_url_id один
+     * ко многим для array-split источников (ССБ/ICB/Арванд — один URL/API
+     * отдаёт массив РАЗНЫХ продуктов), поэтому одного source_url_id мало —
+     * без имени продукты одной страницы схлопывались бы в один (см. диагностику
+     * ССБ: 5 разных кредитов с одним source_url_id вместо 5 карточек).
+     */
+    private function productGroupKey(Product $p): string
+    {
+        return $p->source_url_id !== null
+            ? $p->source_url_id.'|'.($p->name_ru ?? $p->name_tg ?? '')
+            : "single-{$p->id}";
+    }
+
+    /**
      * GET /api/products/credits — кредиты, по умолчанию от выгодных (меньшая ставка).
      */
     public function credits(ProductIndexRequest $request): JsonResponse
@@ -94,6 +108,10 @@ class ProductController extends Controller
         }
 
         $rows = $query->get();
+
+        if ($model->source_url_id !== null) {
+            $rows = $rows->filter(fn (Product $p) => $this->productGroupKey($p) === $this->productGroupKey($model))->values();
+        }
 
         // Данные парсера могут содержать несколько строк products на одну и ту
         // же валюту в рамках группы (source_url_id) — таб должен быть один на
@@ -157,19 +175,19 @@ class ProductController extends Controller
     }
 
     /**
-     * Группирует отфильтрованные строки по source_url_id (продукт без него —
-     * одиночная группа сам с собой) и выбирает id представителя на группу:
-     * приоритет TJS, иначе алфавитный порядок валюты.
+     * Группирует отфильтрованные строки по productGroupKey() (продукт без
+     * source_url_id — одиночная группа сам с собой) и выбирает id
+     * представителя на группу: приоритет TJS, иначе алфавитный порядок валюты.
      *
      * @param  Builder<Product>  $query
      * @return array<int, int>
      */
     private function dedupeToGroupRepresentatives(Builder $query): array
     {
-        $rows = (clone $query)->get(['id', 'source_url_id', 'currency']);
+        $rows = (clone $query)->get(['id', 'source_url_id', 'currency', 'name_ru', 'name_tg']);
 
         return $rows
-            ->groupBy(fn (Product $p) => $p->source_url_id ?? "single-{$p->id}")
+            ->groupBy(fn (Product $p) => $this->productGroupKey($p))
             ->map(fn (Collection $group) => $group
                 ->sortBy(fn (Product $p) => self::CURRENCY_ORDER[$p->currency] ?? 99)
                 ->first()
@@ -188,11 +206,11 @@ class ProductController extends Controller
     {
         $sourceUrlIds = $products->pluck('source_url_id')->filter()->unique()->values();
 
-        $currenciesBySourceUrl = Product::query()
+        $currenciesByGroup = Product::query()
             ->visible()
             ->whereIn('source_url_id', $sourceUrlIds)
-            ->get(['id', 'source_url_id', 'currency'])
-            ->groupBy('source_url_id')
+            ->get(['id', 'source_url_id', 'currency', 'name_ru', 'name_tg'])
+            ->groupBy(fn (Product $p) => $this->productGroupKey($p))
             ->map(fn (Collection $group) => $group->pluck('currency')->unique()
                 ->sortBy(fn (string $c) => self::CURRENCY_ORDER[$c] ?? 99)
                 ->values()
@@ -200,7 +218,7 @@ class ProductController extends Controller
 
         foreach ($products as $product) {
             $currencies = $product->source_url_id !== null
-                ? ($currenciesBySourceUrl[$product->source_url_id] ?? [$product->currency])
+                ? ($currenciesByGroup[$this->productGroupKey($product)] ?? [$product->currency])
                 : [$product->currency];
 
             $product->setAttribute('available_currencies', $currencies);

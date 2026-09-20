@@ -121,11 +121,14 @@ function remove(p: AdminProduct) {
 }
 
 // Группа валют одного продукта — тот же ключ, что и в публичном API
-// (ProductController::dedupeToGroupRepresentatives): source_url_id, либо
-// сам продукт как единственный представитель своей группы.
+// (ProductController::productGroupKey): source_url_id + имя, либо сам
+// продукт как единственный представитель своей группы. Имя обязательно —
+// source_url_id один на МНОГО разных продуктов у array-split источников
+// (ССБ/ICB/Арванд — один URL/API отдаёт массив разных продуктов), без него
+// все продукты одной страницы схлопывались бы в один (см. диагностику ССБ).
 const CURRENCY_ORDER: Record<string, number> = { TJS: 0, USD: 1, EUR: 2 }
 function groupKeyOf(p: AdminProduct): string {
-  return p.source_url_id !== null ? `u:${p.source_url_id}` : `s:${p.id}`
+  return p.source_url_id !== null ? `u:${p.source_url_id}:${p.name_ru ?? p.name_tg ?? ''}` : `s:${p.id}`
 }
 
 type RowWithSpan = AdminProduct & { _rowSpan: number }
