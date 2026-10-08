@@ -294,17 +294,9 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        $currencies = $digest->availableCurrencies('cash');
+        Cache::put($this->wizardCacheKey($chatId), ['step' => 'category'], now()->addMinutes(self::WIZARD_TTL_MINUTES));
 
-        if ($currencies === []) {
-            $telegram->sendMessage($chatId, 'Сейчас нет данных по курсам — попробуйте позже.');
-
-            return;
-        }
-
-        Cache::put($this->wizardCacheKey($chatId), ['step' => 'currency'], now()->addMinutes(self::WIZARD_TTL_MINUTES));
-
-        $telegram->sendMessage($chatId, 'Выберите валюту для уведомления:', $this->currencyKeyboard($currencies));
+        $telegram->sendMessage($chatId, 'Какой курс вас интересует?', $this->categoryKeyboard());
     }
 
     private function handleCallbackQuery(Request $request, TelegramService $telegram, RateDigestService $digest): Response
@@ -357,8 +349,10 @@ class TelegramWebhookController extends Controller
             return response()->noContent();
         }
 
-        if (($state['step'] ?? null) === 'currency' && str_starts_with($data, 'aw:c:')) {
-            $this->wizardCurrencyChosen($telegram, $chatId, substr($data, 5));
+        if (($state['step'] ?? null) === 'category' && str_starts_with($data, 'aw:cat:')) {
+            $this->wizardCategoryChosen($telegram, $digest, $chatId, substr($data, 7));
+        } elseif (($state['step'] ?? null) === 'currency' && str_starts_with($data, 'aw:c:')) {
+            $this->wizardCurrencyChosen($telegram, $chatId, $state, substr($data, 5));
         } elseif (($state['step'] ?? null) === 'intent' && str_starts_with($data, 'aw:i:')) {
             $this->wizardIntentChosen($telegram, $digest, $chatId, $state, substr($data, 5));
         }
@@ -366,12 +360,33 @@ class TelegramWebhookController extends Controller
         return response()->noContent();
     }
 
-    /** Шаг 2: валюта выбрана → спросить намерение клиента (купить/продать). */
-    private function wizardCurrencyChosen(TelegramService $telegram, int $chatId, string $currency): void
+    /** Шаг 2: категория выбрана (наличные/перевод) → список валют, реально котируемых по ней. */
+    private function wizardCategoryChosen(TelegramService $telegram, RateDigestService $digest, int $chatId, string $category): void
+    {
+        $currencies = $digest->availableCurrencies($category);
+
+        if ($currencies === []) {
+            Cache::forget($this->wizardCacheKey($chatId));
+            $telegram->sendMessage($chatId, 'Сейчас нет данных по курсам этой категории — попробуйте позже.');
+
+            return;
+        }
+
+        Cache::put(
+            $this->wizardCacheKey($chatId),
+            ['step' => 'currency', 'category' => $category],
+            now()->addMinutes(self::WIZARD_TTL_MINUTES),
+        );
+
+        $telegram->sendMessage($chatId, 'Выберите валюту для уведомления:', $this->currencyKeyboard($currencies));
+    }
+
+    /** Шаг 3: валюта выбрана → спросить намерение клиента (купить/продать). */
+    private function wizardCurrencyChosen(TelegramService $telegram, int $chatId, array $state, string $currency): void
     {
         Cache::put(
             $this->wizardCacheKey($chatId),
-            ['step' => 'intent', 'currency' => $currency],
+            ['step' => 'intent', 'category' => (string) ($state['category'] ?? 'cash'), 'currency' => $currency],
             now()->addMinutes(self::WIZARD_TTL_MINUTES),
         );
 
@@ -379,7 +394,7 @@ class TelegramWebhookController extends Controller
     }
 
     /**
-     * Шаг 3: намерение клиента → сторона курса (op) + направление (direction).
+     * Шаг 4: намерение клиента → сторона курса (op) + направление (direction).
      * "Хочу купить" — сравниваем с курсом продажи банка (sell), уведомляем,
      * когда стало ДЕШЕВЛЕ порога (below). "Хочу продать" — сравниваем с
      * курсом покупки банка (buy), уведомляем, когда стало ВЫГОДНЕЕ порога
@@ -388,15 +403,16 @@ class TelegramWebhookController extends Controller
     private function wizardIntentChosen(TelegramService $telegram, RateDigestService $digest, int $chatId, array $state, string $intent): void
     {
         [$op, $direction] = $intent === 'buy' ? ['sell', 'below'] : ['buy', 'above'];
+        $category = (string) ($state['category'] ?? 'cash');
         $currency = (string) ($state['currency'] ?? '');
 
         Cache::put(
             $this->wizardCacheKey($chatId),
-            ['step' => 'threshold', 'currency' => $currency, 'op' => $op, 'direction' => $direction],
+            ['step' => 'threshold', 'category' => $category, 'currency' => $currency, 'op' => $op, 'direction' => $direction],
             now()->addMinutes(self::WIZARD_TTL_MINUTES),
         );
 
-        $reference = $this->referenceRate($digest, $currency, $op, $direction);
+        $reference = $this->referenceRate($digest, $category, $currency, $op, $direction);
 
         if ($reference === null) {
             $telegram->sendMessage($chatId, "Сейчас нет данных по курсу {$currency}. Введите порог вручную (число больше 0):");
@@ -412,7 +428,7 @@ class TelegramWebhookController extends Controller
         );
     }
 
-    /** Шаг 4: свободный текст интерпретируется как введённый порог. */
+    /** Шаг 5: свободный текст интерпретируется как введённый порог. */
     private function handleWizardThresholdReply(
         TelegramService $telegram,
         RateDigestService $digest,
@@ -430,11 +446,12 @@ class TelegramWebhookController extends Controller
             return;
         }
 
+        $category = (string) ($state['category'] ?? 'cash');
         $currency = (string) ($state['currency'] ?? '');
         $op = (string) ($state['op'] ?? '');
         $direction = (string) ($state['direction'] ?? '');
 
-        $reference = $this->referenceRate($digest, $currency, $op, $direction);
+        $reference = $this->referenceRate($digest, $category, $currency, $op, $direction);
 
         if ($reference !== null) {
             $min = $reference * 0.5;
@@ -469,7 +486,7 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        if ($alerts->isDuplicate($user, 'cash', $currency, $op, $direction)) {
+        if ($alerts->isDuplicate($user, $category, $currency, $op, $direction)) {
             Cache::forget($this->wizardCacheKey($chatId));
             $telegram->sendMessage($chatId, 'Такое уведомление уже настроено.', $this->menuKeyboard());
 
@@ -477,7 +494,7 @@ class TelegramWebhookController extends Controller
         }
 
         $alerts->create($user, [
-            'category' => 'cash',
+            'category' => $category,
             'currency' => $currency,
             'op' => $op,
             'direction' => $direction,
@@ -495,13 +512,13 @@ class TelegramWebhookController extends Controller
     }
 
     /** Текущий рыночный курс для сверки/валидации ±50% — та же логика, что и в DispatchRateAlerts. */
-    private function referenceRate(RateDigestService $digest, string $currency, string $op, string $direction): ?float
+    private function referenceRate(RateDigestService $digest, string $category, string $currency, string $op, string $direction): ?float
     {
-        if ($currency === '' || $op === '' || $direction === '') {
+        if ($category === '' || $currency === '' || $op === '' || $direction === '') {
             return null;
         }
 
-        $rows = $digest->latestRates('cash', $currency);
+        $rows = $digest->latestRates($category, $currency);
         $mode = $direction === 'above' ? 'max' : 'min';
 
         return $digest->extreme($rows, $op, $mode)['value'];
@@ -537,6 +554,19 @@ class TelegramWebhookController extends Controller
         $buttons = array_map(fn (string $c): array => ['text' => $c, 'callback_data' => "aw:c:{$c}"], $currencies);
 
         return ['inline_keyboard' => array_chunk($buttons, 4)];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function categoryKeyboard(): array
+    {
+        return [
+            'inline_keyboard' => [[
+                ['text' => 'Наличные', 'callback_data' => 'aw:cat:cash'],
+                ['text' => 'Переводом', 'callback_data' => 'aw:cat:transfer'],
+            ]],
+        ];
     }
 
     /**

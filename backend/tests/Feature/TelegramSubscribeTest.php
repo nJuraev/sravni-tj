@@ -31,7 +31,14 @@ class TelegramSubscribeTest extends TestCase
         Config::set('services.telegram.channel_invite_link', 'https://t.me/sravni_channel');
         Config::set('services.telegram.frontend_url', 'https://sravni.tj');
 
-        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true], 200)]);
+        // Специфичные паттерны (не бланкет api.telegram.org/*), чтобы тесты
+        // articles-group-link ниже могли фейкать getChat/exportChatInviteLink
+        // своими ответами — Http::fake резолвит первый зарегистрированный
+        // матч, и более ранний бланкет-фейк забивал бы их все.
+        Http::fake([
+            'api.telegram.org/*/sendMessage' => Http::response(['ok' => true], 200),
+            'api.telegram.org/*/answerCallbackQuery' => Http::response(['ok' => true], 200),
+        ]);
     }
 
     public function test_subscribe_init_returns_deep_link_with_cached_token(): void
@@ -45,6 +52,55 @@ class TelegramSubscribeTest extends TestCase
 
         $token = substr($deepLink, strrpos($deepLink, '=') + 1);
         $this->assertTrue(Cache::has("telegram_subscribe:{$token}"));
+    }
+
+    public function test_articles_group_link_returns_public_username_without_calling_export(): void
+    {
+        Config::set('services.telegram.articles_group_id', '-1001112223334');
+        Http::fake([
+            'api.telegram.org/*/getChat*' => Http::response(['ok' => true, 'result' => ['username' => 'sravni_posts']], 200),
+        ]);
+
+        $this->getJson('/api/telegram/articles-group-link')
+            ->assertOk()
+            ->assertJson(['data' => ['url' => 'https://t.me/sravni_posts']]);
+
+        Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), 'exportChatInviteLink'));
+    }
+
+    public function test_articles_group_link_falls_back_to_invite_link_for_private_group(): void
+    {
+        Config::set('services.telegram.articles_group_id', '-1001112223334');
+        Http::fake([
+            'api.telegram.org/*/getChat*' => Http::response(['ok' => true, 'result' => ['id' => -1001112223334]], 200),
+            'api.telegram.org/*/exportChatInviteLink*' => Http::response(['ok' => true, 'result' => 'https://t.me/+abc123'], 200),
+        ]);
+
+        $this->getJson('/api/telegram/articles-group-link')
+            ->assertOk()
+            ->assertJson(['data' => ['url' => 'https://t.me/+abc123']]);
+    }
+
+    public function test_articles_group_link_caches_result_across_requests(): void
+    {
+        Config::set('services.telegram.articles_group_id', '-1001112223334');
+        Http::fake([
+            'api.telegram.org/*/getChat*' => Http::response(['ok' => true, 'result' => ['username' => 'sravni_posts']], 200),
+        ]);
+
+        $this->getJson('/api/telegram/articles-group-link')->assertOk();
+        $this->getJson('/api/telegram/articles-group-link')->assertOk();
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_articles_group_link_returns_null_when_not_configured(): void
+    {
+        Config::set('services.telegram.articles_group_id', null);
+
+        $this->getJson('/api/telegram/articles-group-link')
+            ->assertOk()
+            ->assertJson(['data' => ['url' => null]]);
     }
 
     public function test_webhook_without_secret_header_returns_403(): void
