@@ -53,6 +53,13 @@
     "none": "Нет оценок",
     "reviews": "{count} отз."
   },
+  "telegramChannelCta": {
+    "title": "Будьте в курсе лучших предложений",
+    "subtitle": "Подписывайтесь на наш Telegram-канал — свежие ставки банков и подборки",
+    "blogTitle": "Новые статьи — в Telegram",
+    "blogSubtitle": "Все посты блога сначала публикуются в нашем Telegram-канале",
+    "button": "Подписаться в Telegram"
+  },
   "catalog": {
     "creditsTitle": "Каталог кредитов",
     "depositsTitle": "Каталог депозитов",

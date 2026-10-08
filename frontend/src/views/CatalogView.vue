@@ -13,6 +13,7 @@ import SkeletonCard from '@/components/ui/SkeletonCard.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
+import TelegramCtaBlock from '@/components/common/TelegramCtaBlock.vue'
 
 const props = defineProps<{ category: Category }>()
 
@@ -60,6 +61,15 @@ useSeo({
 
 const isEmpty = computed(() => status.value === 'loaded' && products.value.length === 0)
 
+const telegramGroupUrl = ref<string | null>(null)
+async function loadTelegramGroupUrl() {
+  try {
+    telegramGroupUrl.value = (await api.getTelegramArticlesGroupLink()).data.url
+  } catch {
+    telegramGroupUrl.value = null
+  }
+}
+
 let requestId = 0
 async function load(q: ProductQuery) {
   const id = ++requestId
@@ -83,7 +93,7 @@ async function load(q: ProductQuery) {
 // Awaited so SSR's renderToString actually waits for real data instead of
 // rendering the permanent loading skeleton; later query changes (filters,
 // pagination) are still picked up client-side via the watch below.
-await load(query.value)
+await Promise.all([load(query.value), loadTelegramGroupUrl()])
 watch(query, (q) => load(q), { deep: true })
 </script>
 
@@ -141,6 +151,13 @@ watch(query, (q) => load(q), { deep: true })
         <CatalogPagination v-if="pagination" :pagination="pagination" @change="setPage" />
       </template>
     </section>
+
+    <TelegramCtaBlock
+      class="catalog__telegram"
+      :title="t('telegramChannelCta.title')"
+      :subtitle="t('telegramChannelCta.subtitle')"
+      :url="telegramGroupUrl"
+    />
   </div>
 </template>
 
@@ -174,6 +191,9 @@ watch(query, (q) => load(q), { deep: true })
   flex-direction: column;
   gap: var(--space-4);
   margin-bottom: var(--space-6);
+}
+.catalog__telegram {
+  margin-top: var(--space-8);
 }
 @media (max-width: 720px) {
   .catalog__results-head {

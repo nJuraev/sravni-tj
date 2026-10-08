@@ -53,6 +53,13 @@
     "none": "Баҳо нест",
     "reviews": "{count} шарҳ"
   },
+  "telegramChannelCta": {
+    "title": "Аз беҳтарин пешниҳодҳо бохабар бошед",
+    "subtitle": "Ба каналии мо дар Telegram обуна шавед — фоизҳои нави бонкҳо ва интихобҳо",
+    "blogTitle": "Мақолаҳои нав — дар Telegram",
+    "blogSubtitle": "Ҳамаи мақолаҳои блог аввал дар канали мо дар Telegram нашр мешаванд",
+    "button": "Дар Telegram обуна шудан"
+  },
   "catalog": {
     "creditsTitle": "Феҳристи қарзҳо",
     "depositsTitle": "Феҳристи амонатҳо",

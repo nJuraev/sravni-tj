@@ -17,6 +17,7 @@ import type {
   ProductResponse,
   RateListQuery,
   RateListResponse,
+  TelegramArticlesGroupLinkResponse,
   TelegramSubscribeInitResponse,
 } from '@/types/api'
 import { WIRE_LOCALE, type Locale } from '@/types/api'
@@ -179,6 +180,12 @@ export const api = {
   initTelegramSubscribe(locale: Locale): Promise<TelegramSubscribeInitResponse> {
     if (USE_MOCKS) return mockTelegramSubscribeInit()
     return request<TelegramSubscribeInitResponse>(locale, '/telegram/subscribe-init', { method: 'POST' })
+  },
+
+  // Без мока: если VITE_USE_MOCKS=true, CTA-блок просто не покажется (url пустой) — не критично для dev без backend.
+  getTelegramArticlesGroupLink(locale: Locale): Promise<TelegramArticlesGroupLinkResponse> {
+    if (USE_MOCKS) return Promise.resolve({ data: { url: null } })
+    return request<TelegramArticlesGroupLinkResponse>(locale, '/telegram/articles-group-link')
   },
 
   // Блог: без моков (USE_MOCKS) пока — новая фича, нет ни отдельного mock-датасета.

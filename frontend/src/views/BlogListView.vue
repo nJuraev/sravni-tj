@@ -12,6 +12,7 @@ import CatalogPagination from '@/components/catalog/CatalogPagination.vue'
 import SkeletonCard from '@/components/ui/SkeletonCard.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
+import TelegramCtaBlock from '@/components/common/TelegramCtaBlock.vue'
 
 const { t } = useI18n()
 const { name } = useLocalizedField()
@@ -30,6 +31,15 @@ const articles = ref<Article[]>([])
 const pagination = ref<Pagination | null>(null)
 const status = ref<'loading' | 'loaded' | 'error'>('loading')
 const isEmpty = computed(() => status.value === 'loaded' && articles.value.length === 0)
+
+const telegramGroupUrl = ref<string | null>(null)
+async function loadTelegramGroupUrl() {
+  try {
+    telegramGroupUrl.value = (await api.getTelegramArticlesGroupLink()).data.url
+  } catch {
+    telegramGroupUrl.value = null
+  }
+}
 
 useSeo({
   title: t('blog.seoTitle'),
@@ -75,12 +85,19 @@ function setPage(page: number): void {
 }
 
 // Awaited so SSR renders real data; category/page changes handled client-side by the watch.
-await Promise.all([load(), loadCategories()])
+await Promise.all([load(), loadCategories(), loadTelegramGroupUrl()])
 watch([activeCategory, activePage], () => load())
 </script>
 
 <template>
   <div class="blog container">
+    <TelegramCtaBlock
+      class="blog__telegram"
+      :title="t('telegramChannelCta.blogTitle')"
+      :subtitle="t('telegramChannelCta.blogSubtitle')"
+      :url="telegramGroupUrl"
+    />
+
     <header class="blog__header">
       <h1>{{ t('blog.title') }}</h1>
       <p v-if="pagination" class="blog__count">{{ t('catalog.found', { count: pagination.total_items }) }}</p>
@@ -138,6 +155,9 @@ watch([activeCategory, activePage], () => load())
   padding-block: var(--space-8);
 }
 .blog__header {
+  margin-bottom: var(--space-6);
+}
+.blog__telegram {
   margin-bottom: var(--space-6);
 }
 .blog__count {

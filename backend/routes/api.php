@@ -62,6 +62,7 @@ Route::post('/leads', [LeadController::class, 'store']);
 
 // Подписка на уведомления в Telegram (регистрация без пароля через бота).
 Route::post('/telegram/subscribe-init', [TelegramController::class, 'subscribeInit']);
+Route::get('/telegram/articles-group-link', [TelegramController::class, 'articlesGroupLink']);
 Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])
     ->middleware('telegram.webhook');
 

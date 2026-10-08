@@ -357,6 +357,11 @@ export interface TelegramSubscribeInitResponse {
   data: { deep_link: string; expires_in: number }
 }
 
+/** GET /api/telegram/articles-group-link response — `url` null if not configured. */
+export interface TelegramArticlesGroupLinkResponse {
+  data: { url: string | null }
+}
+
 /** Профиль пользователя, зарегистрированного через Telegram (без пароля). */
 export interface Profile {
   id: number

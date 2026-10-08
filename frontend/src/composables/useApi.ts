@@ -30,6 +30,7 @@ export function useApi() {
     getBankReviews: (bankId: number, page?: number) => api.getBankReviews(l(), bankId, page),
     createBankReview: (bankId: number, body: BankReviewRequest) => api.createBankReview(l(), bankId, body),
     initTelegramSubscribe: () => api.initTelegramSubscribe(l()),
+    getTelegramArticlesGroupLink: () => api.getTelegramArticlesGroupLink(l()),
     getArticles: (query?: ArticleQuery) => api.getArticles(l(), query),
     getArticle: (slug: string) => api.getArticle(l(), slug),
     getArticleCategories: () => api.getArticleCategories(l()),
