@@ -295,6 +295,30 @@ class BankSeeder extends Seeder
                 // Нет нужных нам продуктов (кредиты/депозиты для физлиц) — скрыт.
                 'status' => 'inactive',
             ],
+            [
+                // МДО, не банк: таблица banks хранит все финансовые организации,
+                // которые являются источниками продуктов для витрины.
+                'slug' => 'furuz',
+                'name_ru' => 'МДО «Фуруз»',
+                'name_tg' => 'МДО «Фуруз»',
+                'website' => 'https://furuz.tj/',
+                'phone' => '+992 44 640 72 72',
+                'address_ru' => 'г. Бохтар, ул. Айни, 27',
+                'address_tg' => null,
+                'contact_email' => 'bovari@furuz.tj',
+            ],
+            [
+                // Русские и таджикские URL продуктов имеют разные слаги,
+                // поэтому универсальное lang_url_rule здесь неприменимо.
+                'slug' => 'azizi-moliya',
+                'name_ru' => 'МДО «Азизи Молия»',
+                'name_tg' => 'МДО «Азизи Молия»',
+                'website' => 'https://azizimoliya.tj/',
+                'phone' => '+992 44 630-20-23',
+                'address_ru' => null,
+                'address_tg' => null,
+                'contact_email' => 'info@azizimoliya.tj',
+            ],
         ];
     }
 }

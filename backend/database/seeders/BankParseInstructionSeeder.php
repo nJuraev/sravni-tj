@@ -613,6 +613,30 @@ class BankParseInstructionSeeder extends Seeder
             'notes' => 'Client-rendered React SPA за Cloudflare (не статический блок — нужен полноценный JS-рендер). USD/EUR/RUB (+ бонусом CNY/UZS) покупка/продажа. cash, без инверсии (buy < sell). Кредитов и вкладов у банка нет (платёжный/карточный).',
             'scraper' => 'browser',
         ],
+
+        // --- МДО «Фуруз» (furuz.tj) ---
+        [
+            'bank' => 'Фуруз', 'kind' => 'product_discovery', 'category' => 'credit',
+            'start_url' => 'https://furuz.tj/personal/', 'menu_sections' => null,
+            'notes' => 'Страница-каталог розничных кредитов. Собери ссылки только на детальные страницы /personal/loan.php?id=<id>; исключи разделы/формы /loan/loans.php и /loan/request.php, а также продукты для юрлиц.',
+        ],
+        [
+            'bank' => 'Фуруз', 'kind' => 'product_discovery', 'category' => 'deposit',
+            'start_url' => 'https://furuz.tj/deposit/', 'menu_sections' => null,
+            'notes' => 'Каталог вкладов: сейчас одна карточка. Собери только детальную ссылку /deposit/dt.php?id=<id>; исключи страхование, заявку и калькулятор.',
+        ],
+
+        // --- МДО «Азизи Молия» (azizimoliya.tj) ---
+        [
+            'bank' => 'Азизи Молия', 'kind' => 'product_discovery', 'category' => 'credit',
+            'start_url' => 'https://azizimoliya.tj/loans/', 'menu_sections' => null,
+            'notes' => 'Страница-каталог кредитов для физлиц. Собери ссылки карточек /credit-products/<slug>/; исключи ссылки меню, формы заявки и кредиты для юрлиц.',
+        ],
+        [
+            'bank' => 'Азизи Молия', 'kind' => 'product_discovery', 'category' => 'deposit',
+            'start_url' => 'https://azizimoliya.tj/%D0%B4%D0%B5%D0%BF%D0%BE%D0%B7%D0%B8%D1%82%D1%8B/', 'menu_sections' => null,
+            'notes' => 'Страница-каталог депозитов для физлиц. Собери ссылки карточек /deposits/<slug>/. На детальных страницах бери ставку и срок из опубликованной карточки условий, а не из демонстрационного калькулятора (его значение может противоречить карточке). Исключи вклады для юрлиц.',
+        ],
     ];
 
     public function run(): void
