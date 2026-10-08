@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { NButton, NButtonGroup, NIcon, useMessage } from 'naive-ui'
 import {
-  ImageOutline, LinkOutline, ListOutline, ArrowUndoOutline, ArrowRedoOutline,
+  ImageOutline, LinkOutline, ListOutline, ArrowUndoOutline, ArrowRedoOutline, CodeSlashOutline,
 } from '@vicons/ionicons5'
 import { adminApi } from '@/api/admin'
 import { ApiError } from '@/api/errors'
@@ -41,6 +41,24 @@ watch(
 
 onBeforeUnmount(() => editor.value?.destroy())
 
+const rawMode = ref(false)
+const rawHtml = ref('')
+
+function toggleRaw(): void {
+  if (!editor.value) return
+  if (rawMode.value) {
+    editor.value.commands.setContent(rawHtml.value, true)
+    emit('update:modelValue', editor.value.getHTML())
+  } else {
+    rawHtml.value = editor.value.getHTML()
+  }
+  rawMode.value = !rawMode.value
+}
+
+function onRawInput(): void {
+  emit('update:modelValue', rawHtml.value)
+}
+
 function setLink(): void {
   if (!editor.value) return
   const previous = editor.value.getAttributes('link').href as string | undefined
@@ -74,7 +92,7 @@ async function insertImage(): Promise<void> {
 <template>
   <div class="aeditor">
     <div v-if="editor" class="aeditor__toolbar">
-      <n-button-group size="small">
+      <n-button-group v-if="!rawMode" size="small">
         <n-button :type="editor.isActive('bold') ? 'primary' : 'default'" @click="editor.chain().focus().toggleBold().run()">
           <strong>B</strong>
         </n-button>
@@ -106,8 +124,19 @@ async function insertImage(): Promise<void> {
           <n-icon><ArrowRedoOutline /></n-icon>
         </n-button>
       </n-button-group>
+      <n-button size="small" :type="rawMode ? 'primary' : 'default'" @click="toggleRaw">
+        <n-icon><CodeSlashOutline /></n-icon>
+        &nbsp;HTML
+      </n-button>
     </div>
-    <editor-content :editor="editor" class="aeditor__body" />
+    <textarea
+      v-if="rawMode"
+      v-model="rawHtml"
+      class="aeditor__raw"
+      spellcheck="false"
+      @input="onRawInput"
+    />
+    <editor-content v-else :editor="editor" class="aeditor__body" />
   </div>
 </template>
 
@@ -118,9 +147,23 @@ async function insertImage(): Promise<void> {
   overflow: hidden;
 }
 .aeditor__toolbar {
+  display: flex;
+  justify-content: space-between;
   padding: 8px;
   background: #fafafa;
   border-bottom: 1px solid #d9d9d9;
+}
+.aeditor__raw {
+  width: 100%;
+  min-height: 260px;
+  max-height: 560px;
+  padding: 12px 16px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 13px;
+  box-sizing: border-box;
 }
 .aeditor__body {
   padding: 12px 16px;
