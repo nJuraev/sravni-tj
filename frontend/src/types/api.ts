@@ -357,8 +357,8 @@ export interface TelegramSubscribeInitResponse {
   data: { deep_link: string; expires_in: number }
 }
 
-/** GET /api/telegram/articles-group-link response — `url` null if not configured. */
-export interface TelegramArticlesGroupLinkResponse {
+/** GET /api/telegram/channel-link response — `url` null if not configured. */
+export interface TelegramChannelLinkResponse {
   data: { url: string | null }
 }
 

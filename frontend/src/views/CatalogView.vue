@@ -61,12 +61,12 @@ useSeo({
 
 const isEmpty = computed(() => status.value === 'loaded' && products.value.length === 0)
 
-const telegramGroupUrl = ref<string | null>(null)
-async function loadTelegramGroupUrl() {
+const telegramChannelUrl = ref<string | null>(null)
+async function loadTelegramChannelUrl() {
   try {
-    telegramGroupUrl.value = (await api.getTelegramArticlesGroupLink()).data.url
+    telegramChannelUrl.value = (await api.getTelegramChannelLink()).data.url
   } catch {
-    telegramGroupUrl.value = null
+    telegramChannelUrl.value = null
   }
 }
 
@@ -93,7 +93,7 @@ async function load(q: ProductQuery) {
 // Awaited so SSR's renderToString actually waits for real data instead of
 // rendering the permanent loading skeleton; later query changes (filters,
 // pagination) are still picked up client-side via the watch below.
-await Promise.all([load(query.value), loadTelegramGroupUrl()])
+await Promise.all([load(query.value), loadTelegramChannelUrl()])
 watch(query, (q) => load(q), { deep: true })
 </script>
 
@@ -156,7 +156,7 @@ watch(query, (q) => load(q), { deep: true })
       class="catalog__telegram"
       :title="t('telegramChannelCta.title')"
       :subtitle="t('telegramChannelCta.subtitle')"
-      :url="telegramGroupUrl"
+      :url="telegramChannelUrl"
     />
   </div>
 </template>

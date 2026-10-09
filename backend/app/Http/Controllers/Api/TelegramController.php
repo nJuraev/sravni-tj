@@ -7,8 +7,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -41,57 +39,17 @@ class TelegramController extends Controller
     }
 
     /**
-     * GET /api/telegram/articles-group-link — публичная ссылка на группу,
-     * где публикуются посты блога (см. SendArticleToTelegramJob), для кнопки
-     * CTA на витрине. Группа задана по chat_id (`articles_group_id`), не по
-     * ссылке, поэтому ссылка получается через Bot API и кэшируется навсегда:
-     * `exportChatInviteLink` при каждом вызове отзывает предыдущую ссылку, и
-     * дёргать его часто нельзя — ссылка перевыпустится, только если кэш
-     * вручную сбросить (напр. `php artisan cache:forget telegram_articles_group_link`).
+     * GET /api/telegram/channel-link — публичная ссылка на Telegram-канал
+     * для кнопки CTA на витрине. Тот же `channel_invite_link`, что уже
+     * отправляется ботом вторым сообщением после /start (см.
+     * TelegramWebhookController) — канал (`channel_id`), куда реально льются
+     * ежедневные посты (SendFinancePostJob), а не group-id репоста статей
+     * блога (`articles_group_id`, отдельный ручной триггер, см. §12.18 ТЗ).
      */
-    public function articlesGroupLink(): JsonResponse
+    public function channelLink(): JsonResponse
     {
-        $groupId = config('services.telegram.articles_group_id');
-        $botToken = config('services.telegram.bot_token');
-
-        if (empty($groupId) || empty($botToken)) {
-            return response()->json(['data' => ['url' => null]]);
-        }
-
-        $url = Cache::rememberForever(
-            'telegram_articles_group_link',
-            fn () => $this->fetchArticlesGroupLink((string) $botToken, (string) $groupId),
-        );
-
-        return response()->json(['data' => ['url' => $url]]);
-    }
-
-    private function fetchArticlesGroupLink(string $botToken, string $groupId): ?string
-    {
-        try {
-            // Публичная группа (есть @username) — не требует invite-ссылки и ничего не отзывает.
-            $chat = Http::timeout(5)->get("https://api.telegram.org/bot{$botToken}/getChat", ['chat_id' => $groupId]);
-            $username = $chat->successful() ? $chat->json('result.username') : null;
-
-            if (! empty($username)) {
-                return "https://t.me/{$username}";
-            }
-
-            // Приватная группа — единственный способ получить публичную ссылку.
-            $invite = Http::timeout(5)->get("https://api.telegram.org/bot{$botToken}/exportChatInviteLink", ['chat_id' => $groupId]);
-
-            if ($invite->successful()) {
-                return $invite->json('result');
-            }
-
-            Log::error('Telegram articles group link: API call failed.', [
-                'getChat_status' => $chat->status(),
-                'exportChatInviteLink_status' => $invite->status(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Telegram articles group link fetch threw an exception.', ['exception' => $e->getMessage()]);
-        }
-
-        return null;
+        return response()->json([
+            'data' => ['url' => config('services.telegram.channel_invite_link')],
+        ]);
     }
 }

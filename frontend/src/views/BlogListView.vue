@@ -32,12 +32,12 @@ const pagination = ref<Pagination | null>(null)
 const status = ref<'loading' | 'loaded' | 'error'>('loading')
 const isEmpty = computed(() => status.value === 'loaded' && articles.value.length === 0)
 
-const telegramGroupUrl = ref<string | null>(null)
-async function loadTelegramGroupUrl() {
+const telegramChannelUrl = ref<string | null>(null)
+async function loadTelegramChannelUrl() {
   try {
-    telegramGroupUrl.value = (await api.getTelegramArticlesGroupLink()).data.url
+    telegramChannelUrl.value = (await api.getTelegramChannelLink()).data.url
   } catch {
-    telegramGroupUrl.value = null
+    telegramChannelUrl.value = null
   }
 }
 
@@ -85,7 +85,7 @@ function setPage(page: number): void {
 }
 
 // Awaited so SSR renders real data; category/page changes handled client-side by the watch.
-await Promise.all([load(), loadCategories(), loadTelegramGroupUrl()])
+await Promise.all([load(), loadCategories(), loadTelegramChannelUrl()])
 watch([activeCategory, activePage], () => load())
 </script>
 
@@ -95,7 +95,7 @@ watch([activeCategory, activePage], () => load())
       class="blog__telegram"
       :title="t('telegramChannelCta.blogTitle')"
       :subtitle="t('telegramChannelCta.blogSubtitle')"
-      :url="telegramGroupUrl"
+      :url="telegramChannelUrl"
     />
 
     <header class="blog__header">
