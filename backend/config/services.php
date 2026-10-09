@@ -48,6 +48,12 @@ return [
         'articles_group_id' => env('TELEGRAM_ARTICLES_GROUP_ID'),
     ],
 
+    // Статичный Bearer-токен для внешней публикации статей блога в обход
+    // админки (POST /api/articles/publish, см. Api\ArticlePublishController).
+    'article_publish' => [
+        'token' => env('ARTICLE_PUBLISH_TOKEN'),
+    ],
+
     // Те же имена переменных, что у Go-парсера (parser/internal/config) —
     // значение ключа можно переиспользовать между сервисами.
     'ai' => [

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\SetLocaleFromHeader;
+use App\Http\Middleware\VerifyArticlePublishToken;
 use App\Http\Middleware\VerifyRatesWebhookSecret;
 use App\Http\Middleware\VerifyTelegramWebhookSecret;
 use Illuminate\Auth\AuthenticationException;
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'telegram.webhook' => VerifyTelegramWebhookSecret::class,
             'rates.webhook' => VerifyRatesWebhookSecret::class,
+            'article.publish.token' => VerifyArticlePublishToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

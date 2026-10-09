@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\PostTopicController as AdminPostTopicController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\ArticleController;
+use App\Http\Controllers\Api\ArticlePublishController;
 use App\Http\Controllers\Api\BankController;
 use App\Http\Controllers\Api\Internal\RatesNotifyController;
 use App\Http\Controllers\Api\BankReviewController;
@@ -45,6 +46,12 @@ Route::get('/products/{product}', [ProductController::class, 'show'])
 Route::get('/articles', [ArticleController::class, 'index']);
 Route::get('/article-categories', [ArticleController::class, 'categories']);
 Route::get('/articles/{slug}', [ArticleController::class, 'show']);
+
+// Публикация статьи в обход админки (внешняя автоматизация) — статичный
+// Bearer-токен + rate limit 3/час, оба проверяются в одной middleware
+// (см. VerifyArticlePublishToken, почему не отдельный throttle:).
+Route::post('/articles/publish', [ArticlePublishController::class, 'store'])
+    ->middleware('article.publish.token');
 
 Route::get('/banks', [BankController::class, 'index']);
 Route::get('/banks/{bank}', [BankController::class, 'show'])->whereNumber('bank');
