@@ -439,17 +439,15 @@ class ProductController extends Controller
 
     /**
      * Раскладывает уже проранжированные строки по банкам (сохраняя порядок
-     * внутри банка — по коэффициенту/ставке) и жадно собирает результат так,
-     * чтобы соседние карточки не совпадали по банку: на каждом шаге берём
-     * следующий id у банка с НАИБОЛЬШИМ остатком очереди среди тех, что не
-     * совпадают с только что поставленным (тай-брейк — исходный приоритет
-     * банка). Простой round-robin («по одному от каждого по кругу») этого не
-     * гарантирует — при перекосе (например, 3 продукта у одного банка против
-     * 1+1 у остальных) он всё равно сталкивает лишние продукты в хвосте;
-     * жадный выбор «у кого больше всего осталось» — стандартное решение
-     * задачи «расставить так, чтобы одинаковые не стояли рядом» и не
-     * склеивает их, пока это математически возможно. Склейка неизбежна,
-     * только когда один банк — единственный, у кого вообще остались продукты.
+     * внутри банка — по коэффициенту/ставке) так, чтобы соседние карточки не
+     * совпадали по банку, НО приоритет банка (порядок первого появления в
+     * $rows = коэффициент desc) остаётся главным: на каждом шаге берём
+     * следующий id у самого приоритетного банка, не совпадающего с только что
+     * поставленным, — если после этого оставшиеся продукты ещё можно
+     * расставить без соседних повторов (стандартное условие: у каждого банка
+     * остаток <= ceil(n/2), а у только что поставленного <= floor(n/2)).
+     * Если уже нельзя (перекос в пользу одного банка) — просто берём самый
+     * приоритетный банк: склейка в хвосте тогда неизбежна.
      *
      * @param  Collection<int, Product>  $rows
      * @return array<int, int>
@@ -457,42 +455,64 @@ class ProductController extends Controller
     private function roundRobinByBank(Collection $rows): array
     {
         $byBank = [];
-        $bankPriority = [];
         foreach ($rows as $row) {
-            if (! isset($bankPriority[$row->bank_id])) {
-                $bankPriority[$row->bank_id] = count($bankPriority);
-            }
             $byBank[$row->bank_id][] = $row->id;
         }
 
         $result = [];
         $lastBank = null;
+        $remaining = count($rows);
 
         while ($byBank !== []) {
-            $bestBank = null;
-            $bestKey = null;
+            $counts = array_map('count', $byBank);
+            $chosen = null;
 
-            foreach ($byBank as $bankId => $queue) {
-                if ($bankId === $lastBank && count($byBank) > 1) {
+            foreach ($counts as $bankId => $count) {
+                if ($bankId === $lastBank && count($counts) > 1) {
                     continue;
                 }
 
-                // [-остаток, приоритет]: больше остаток — раньше; при равенстве — выше коэффициент.
-                $key = [-count($queue), $bankPriority[$bankId]];
-                if ($bestKey === null || $key < $bestKey) {
-                    $bestKey = $key;
-                    $bestBank = $bankId;
+                $after = $counts;
+                $after[$bankId]--;
+                if ($this->canArrangeWithoutAdjacent($after, $remaining - 1, $bankId)) {
+                    $chosen = $bankId;
+                    break;
                 }
             }
 
-            $result[] = array_shift($byBank[$bestBank]);
-            if ($byBank[$bestBank] === []) {
-                unset($byBank[$bestBank]);
+            if ($chosen === null) {
+                // Расстановка без соседей уже невозможна (перекос) — сохраняем хотя бы приоритет банков.
+                $candidates = $counts;
+                if (count($candidates) > 1) {
+                    unset($candidates[$lastBank]);
+                }
+                $chosen = array_key_first($candidates);
             }
-            $lastBank = $bestBank;
+
+            $result[] = array_shift($byBank[$chosen]);
+            if ($byBank[$chosen] === []) {
+                unset($byBank[$chosen]);
+            }
+            $lastBank = $chosen;
+            $remaining--;
         }
 
         return $result;
+    }
+
+    /**
+     * @param  array<int, int>  $counts  остатки по банкам
+     */
+    private function canArrangeWithoutAdjacent(array $counts, int $total, int $lastBank): bool
+    {
+        foreach ($counts as $bankId => $count) {
+            $limit = $bankId === $lastBank ? intdiv($total, 2) : intdiv($total + 1, 2);
+            if ($count > $limit) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

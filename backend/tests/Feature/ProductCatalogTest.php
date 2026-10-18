@@ -373,6 +373,19 @@ class ProductCatalogTest extends TestCase
         $this->assertSame(0, $consecutiveSameBank, 'no two adjacent cards should share a bank when alternatives exist');
     }
 
+    public function test_priority_bank_with_fewer_products_still_comes_first_in_default_sort(): void
+    {
+        $priorityBank = Bank::factory()->create(['sort_coefficient' => 10]);
+        $bigBank = Bank::factory()->create(['sort_coefficient' => 0]);
+
+        $priority = Product::factory()->for($priorityBank, 'bank')->credit()->create(['rate_min' => 25, 'rate_max' => 30]);
+        Product::factory()->for($bigBank, 'bank')->credit()->count(4)->create(['rate_min' => 5, 'rate_max' => 9]);
+
+        $this->getJson('/api/products/credits?per_page=3')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', (int) $priority->id);
+    }
+
     public function test_explicit_sort_ignores_bank_coefficient(): void
     {
         $priorityBank = Bank::factory()->create(['sort_coefficient' => 10]);
