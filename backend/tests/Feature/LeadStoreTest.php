@@ -172,15 +172,49 @@ class LeadStoreTest extends TestCase
             ->assertJsonValidationErrors(['full_name', 'phone', 'product_id', 'consent']);
     }
 
-    public function test_lead_saved_when_delivery_email_empty_still_returns_201(): void
+    public function test_lead_falls_back_to_bank_contact_email_when_source_email_empty(): void
     {
-        // Источник без email доставки → лид сохраняется (201), письмо не ставится в очередь.
+        // Источник без email доставки → письмо уходит на общий контакт банка.
         Mail::fake();
-        $product = $this->visibleProduct(deliveryEmail: null);
+        $bank = Bank::factory()->create(['contact_email' => 'bank-contact@example.com']);
+        $source = BankSourceUrl::factory()->for($bank, 'bank')->create([
+            'category' => 'credit',
+            'email' => null,
+        ]);
+        $product = Product::factory()->for($bank, 'bank')->create([
+            'status' => 'active',
+            'category' => 'credit',
+            'source_url_id' => $source->id,
+        ]);
+
+        $this->postJson('/api/leads', [
+            'full_name' => 'Фоллбэк Email',
+            'phone' => '+992900000006',
+            'product_id' => $product->id,
+            'consent' => true,
+        ])->assertCreated();
+
+        Mail::assertQueued(LeadReceived::class, fn (LeadReceived $mail) => $mail->hasTo('bank-contact@example.com'));
+    }
+
+    public function test_lead_saved_when_source_and_bank_email_both_empty_still_returns_201(): void
+    {
+        // Ни у источника, ни у банка нет email доставки → лид сохраняется (201), письмо не ставится в очередь.
+        Mail::fake();
+        $bank = Bank::factory()->create(['contact_email' => null]);
+        $source = BankSourceUrl::factory()->for($bank, 'bank')->create([
+            'category' => 'credit',
+            'email' => null,
+        ]);
+        $product = Product::factory()->for($bank, 'bank')->create([
+            'status' => 'active',
+            'category' => 'credit',
+            'source_url_id' => $source->id,
+        ]);
 
         $this->postJson('/api/leads', [
             'full_name' => 'Граница Email',
-            'phone' => '+992900000006',
+            'phone' => '+992900000007',
             'product_id' => $product->id,
             'consent' => true,
         ])->assertCreated();

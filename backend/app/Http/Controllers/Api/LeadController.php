@@ -50,8 +50,8 @@ class LeadController extends Controller
         });
 
         // Доставка письма — best-effort. Адрес берётся из bank_source_urls.email
-        // (по категории продукта), независимо от is_partner. Пустой email/сбой
-        // очереди не теряет лид и не меняет HTTP-код.
+        // (по категории продукта) с фоллбэком на banks.contact_email, независимо
+        // от is_partner. Пустой email/сбой очереди не теряет лид и не меняет HTTP-код.
         $this->dispatchNotification($lead, $product);
 
         return response()->json([
@@ -75,10 +75,10 @@ class LeadController extends Controller
     private function dispatchNotification(Lead $lead, Product $product): void
     {
         // Адрес доставки — email источника (bank_source_urls.email) ДЛЯ категории
-        // продукта, а не общий контакт банка. Нет источника/email → лид сохранён,
-        // письмо не отправляем.
-        $product->loadMissing('sourceUrl');
-        $email = $product->sourceUrl?->email;
+        // продукта. Пока точные email источников не уточнены (поле пустое у всех
+        // банков), временно падаем на общий контактный email банка (banks.contact_email).
+        $product->loadMissing(['sourceUrl', 'bank']);
+        $email = $product->sourceUrl?->email ?: $product->bank?->contact_email;
 
         if (empty($email)) {
             Log::warning('Lead saved but delivery email (source) is empty; notification skipped.', [
