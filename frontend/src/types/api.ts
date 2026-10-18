@@ -243,6 +243,8 @@ export interface ProductQuery {
   currency?: Currency
   /** «Галочка особые»: подмешать аномальные (is_special) продукты. */
   special?: boolean
+  /** Подборка для главной: один продукт на банк, один тип, по коэффициенту банка. */
+  featured?: boolean
   amount_min?: number
   amount_max?: number
   term_min?: number

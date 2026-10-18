@@ -386,6 +386,41 @@ class ProductCatalogTest extends TestCase
             ->assertJsonPath('data.0.id', (int) $priority->id);
     }
 
+    public function test_featured_returns_one_product_per_bank_of_a_single_type_by_coefficient(): void
+    {
+        $priority = Bank::factory()->create(['sort_coefficient' => 10]);
+        $banks = Bank::factory()->count(3)->create(['sort_coefficient' => 0]);
+
+        Product::factory()->for($priority, 'bank')->credit()->count(3)->create(['subcategory' => 'consumer']);
+        foreach ($banks as $bank) {
+            Product::factory()->for($bank, 'bank')->credit()->create(['subcategory' => 'consumer']);
+        }
+        Product::factory()->for($banks[0], 'bank')->credit()->create(['subcategory' => 'mortgage']);
+        Product::factory()->for($banks[1], 'bank')->credit()->create(['subcategory' => 'mortgage']);
+
+        $data = $this->getJson('/api/products/credits?featured=1&per_page=3')->assertOk()->json('data');
+
+        $this->assertCount(3, $data);
+        $this->assertCount(3, array_unique(array_column(array_column($data, 'bank'), 'id')));
+        $this->assertSame([(int) $priority->id], [array_column($data, 'bank')[0]['id']]);
+        $this->assertSame(['consumer'], array_values(array_unique(array_column($data, 'subcategory'))));
+    }
+
+    public function test_featured_fills_remaining_slots_with_other_banks_when_type_is_small(): void
+    {
+        $priority = Bank::factory()->create(['sort_coefficient' => 10]);
+        $other = Bank::factory()->create(['sort_coefficient' => 0]);
+        $third = Bank::factory()->create(['sort_coefficient' => 0]);
+
+        Product::factory()->for($priority, 'bank')->credit()->count(2)->create(['subcategory' => 'consumer']);
+        Product::factory()->for($other, 'bank')->credit()->create(['subcategory' => 'consumer']);
+        Product::factory()->for($third, 'bank')->credit()->create(['subcategory' => 'mortgage']);
+
+        $data = $this->getJson('/api/products/credits?featured=1&per_page=3')->assertOk()->json('data');
+
+        $this->assertCount(3, array_unique(array_column(array_column($data, 'bank'), 'id')));
+    }
+
     public function test_explicit_sort_ignores_bank_coefficient(): void
     {
         $priorityBank = Bank::factory()->create(['sort_coefficient' => 10]);

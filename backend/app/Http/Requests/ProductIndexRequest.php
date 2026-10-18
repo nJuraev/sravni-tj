@@ -32,6 +32,9 @@ class ProductIndexRequest extends FormRequest
             // «Галочка особые»: подмешать аномальные (is_special) продукты к обычным.
             'special' => ['sometimes', 'boolean'],
 
+            // Подборка для главной: один продукт на банк, один тип продукта, по коэффициенту банка.
+            'featured' => ['sometimes', 'boolean'],
+
             // Мультиселект подкатегорий: продукт любой из перечисленных подкатегорий.
             'subcategory' => ['sometimes', 'array'],
             'subcategory.*' => [

@@ -149,7 +149,9 @@ class ProductController extends Controller
 
         $page = (int) $request->integer('page', 1);
 
-        if ($request->filled('sort')) {
+        if ($request->boolean('featured')) {
+            $paginator = $this->paginateFeatured($representativeIds, $defaultSort, $perPage);
+        } elseif ($request->filled('sort')) {
             $finalQuery = Product::query()
                 ->whereIn('id', $representativeIds)
                 ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates']);
@@ -426,15 +428,109 @@ class ProductController extends Controller
         $total = count($orderedIds);
         $pageIds = array_slice($orderedIds, ($page - 1) * $perPage, $perPage);
 
+        return new LengthAwarePaginator($this->hydrateInOrder($pageIds), $total, $perPage, $page);
+    }
+
+    /**
+     * Подборка для главной (?featured=1): каждый банк максимум один раз,
+     * банки — по убыванию коэффициента (тай-брейк — лучшая ставка), и все
+     * карточки одного «типа» (subcategory), чтобы предложения были
+     * сопоставимы. Тип выбирается псевдослучайно и меняется раз в минуту
+     * (а не на каждый запрос) — иначе SSR-ответ и повторный запрос клиента
+     * при гидратации показали бы разные карточки. Если у выбранного типа
+     * меньше банков, чем нужно слотов, добираем лучшими продуктами остальных
+     * банков.
+     *
+     * @param  array<int, int>  $ids
+     * @return LengthAwarePaginator<int, Product>
+     */
+    private function paginateFeatured(array $ids, string $defaultSort, int $perPage): LengthAwarePaginator
+    {
+        $descending = str_starts_with($defaultSort, '-');
+        $field = ltrim($defaultSort, '-');
+        $worst = $descending ? -INF : INF;
+
+        $rows = Product::query()
+            ->join('banks', 'banks.id', '=', 'products.bank_id')
+            ->whereIn('products.id', $ids)
+            ->get([
+                'products.id as id',
+                'products.bank_id as bank_id',
+                'products.subcategory as subcategory',
+                'products.'.$field.' as sort_value',
+                'banks.sort_coefficient as coefficient',
+            ])
+            ->all();
+
+        // Лучшие продукты первыми: сперва по дефолтному полю эндпоинта, затем по id.
+        usort($rows, function (Product $a, Product $b) use ($descending, $worst): int {
+            $va = $a->sort_value === null ? $worst : (float) $a->sort_value;
+            $vb = $b->sort_value === null ? $worst : (float) $b->sort_value;
+
+            return ($descending ? $vb <=> $va : $va <=> $vb) ?: $a->id <=> $b->id;
+        });
+
+        $bySubcategory = [];
+        foreach ($rows as $row) {
+            $bySubcategory[$row->subcategory ?? 'other'][] = $row;
+        }
+
+        $banksPerType = array_map(fn (array $group): int => count(array_unique(array_column($group, 'bank_id'))), $bySubcategory);
+        $needed = min($perPage, $banksPerType === [] ? 0 : max($banksPerType));
+        $eligible = array_keys(array_filter($banksPerType, fn (int $n): bool => $n >= $needed));
+        sort($eligible);
+
+        $picked = [];
+        if ($eligible !== []) {
+            $chosen = $eligible[crc32(intdiv(time(), 60).'|'.$defaultSort) % count($eligible)];
+            $picked = $this->bestPerBank($bySubcategory[$chosen]);
+        }
+
+        if (count($picked) < $perPage) {
+            $usedBanks = array_column($picked, 'bank_id');
+            $filler = array_filter($this->bestPerBank($rows), fn (Product $p): bool => ! in_array($p->bank_id, $usedBanks, true));
+            $picked = [...$picked, ...$filler];
+        }
+
+        $ids = array_map(fn (Product $p): int => $p->id, array_slice($picked, 0, $perPage));
+
+        return new LengthAwarePaginator($this->hydrateInOrder($ids), count($ids), $perPage, 1);
+    }
+
+    /**
+     * Первый (лучший) продукт каждого банка из уже отсортированного списка;
+     * банки — по убыванию коэффициента, при равенстве — в порядке появления.
+     *
+     * @param  array<int, Product>  $rankedRows
+     * @return array<int, Product>
+     */
+    private function bestPerBank(array $rankedRows): array
+    {
+        $best = [];
+        foreach ($rankedRows as $row) {
+            $best[$row->bank_id] ??= $row;
+        }
+
+        $order = array_flip(array_keys($best));
+        uasort($best, fn (Product $a, Product $b): int => ((float) $b->coefficient <=> (float) $a->coefficient)
+            ?: $order[$a->bank_id] <=> $order[$b->bank_id]);
+
+        return array_values($best);
+    }
+
+    /**
+     * @param  array<int, int>  $ids
+     * @return Collection<int, Product>
+     */
+    private function hydrateInOrder(array $ids): Collection
+    {
         $modelsById = Product::query()
-            ->whereIn('id', $pageIds)
+            ->whereIn('id', $ids)
             ->with(['bank' => fn ($q) => $q->withReviewStats(), 'rates'])
             ->get()
             ->keyBy('id');
 
-        $items = Collection::make($pageIds)->map(fn (int $id) => $modelsById[$id])->filter()->values();
-
-        return new LengthAwarePaginator($items, $total, $perPage, $page);
+        return Collection::make($ids)->map(fn (int $id) => $modelsById[$id])->filter()->values();
     }
 
     /**

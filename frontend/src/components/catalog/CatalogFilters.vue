@@ -3,7 +3,6 @@ import { reactive, watch, computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Bank, Currency, FeatureKey, ProductQuery, Subcategory } from '@/types/api'
 import { FEATURE_KEYS, SUBCATEGORIES_BY_CATEGORY } from '@/composables/useProductDisplay'
-import { DEFAULT_SORT } from '@/composables/useCatalogQuery'
 import { useLocalizedField } from '@/composables/useLocalizedField'
 import { useApi } from '@/composables/useApi'
 import { bankLogoUrl } from '@/lib/bankIcon'
@@ -159,7 +158,7 @@ function buildQuery(): ProductQuery {
     rate_max: toNum(local.rate_max),
     features: [...local.features],
     special: local.special || undefined,
-    sort: props.query.sort ?? DEFAULT_SORT,
+    sort: props.query.sort,
     per_page: props.query.per_page,
   }
 }

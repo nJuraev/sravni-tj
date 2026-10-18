@@ -55,6 +55,7 @@ export function buildProductParams(query: ProductQuery): URLSearchParams {
   // category не сериализуется — она выбирает эндпоинт.
   set('currency', query.currency)
   if (query.special) params.set('special', 'true')
+  if (query.featured) params.set('featured', '1')
   set('amount_min', query.amount_min)
   set('amount_max', query.amount_max)
   set('term_min', query.term_min)

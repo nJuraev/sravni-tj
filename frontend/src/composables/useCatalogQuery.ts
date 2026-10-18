@@ -80,7 +80,8 @@ export function queryFromRoute(q: LocationQuery, category: Category): ProductQue
     rate_min: num(q.rate_min),
     rate_max: num(q.rate_max),
     features: parseFeatures(q['features[]'] ?? q.features),
-    sort: sort && SORTS.includes(sort) ? sort : DEFAULT_SORT_BY_CATEGORY[category],
+    // Без явного выбора sort не шлём — бэкенд тогда сортирует по коэффициенту банка.
+    sort: sort && SORTS.includes(sort) ? sort : undefined,
     page: num(q.page) ?? 1,
     per_page: num(q.per_page) ?? DEFAULT_PER_PAGE,
   }
@@ -104,8 +105,7 @@ export function queryToRoute(query: ProductQuery): LocationQuery {
   if (query.features?.length) out['features[]'] = query.features
   if (query.subcategory?.length) out['subcategory[]'] = query.subcategory
   if (query.bank_id?.length) out['bank_id[]'] = query.bank_id.map(String)
-  const defaultSort = query.category ? DEFAULT_SORT_BY_CATEGORY[query.category] : DEFAULT_SORT
-  if (query.sort && query.sort !== defaultSort) out.sort = query.sort
+  if (query.sort) out.sort = query.sort
   if (query.page && query.page > 1) out.page = String(query.page)
   return out
 }

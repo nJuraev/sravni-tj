@@ -23,9 +23,9 @@ const products = ref<Product[]>([])
 
 // Awaited (not onMounted, which never fires server-side) so SSR renders real products.
 try {
-  // Без sort: дефолтная выдача бэкенда — по коэффициенту банка, но с чередованием
-  // банков (один банк не занимает весь топ), внутри банка — лучшая ставка первой.
-  const res = await api.getProducts({ category: props.category, per_page: 3 })
+  // featured: по одному продукту на банк, один (псевдослучайный) тип продукта,
+  // банки по коэффициенту — см. ProductController::paginateFeatured.
+  const res = await api.getProducts({ category: props.category, featured: true, per_page: 3 })
   products.value = res.data
   status.value = res.data.length === 0 ? 'error' : 'loaded'
 } catch (err) {

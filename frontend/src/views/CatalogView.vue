@@ -23,6 +23,7 @@ const category = toRef(props, 'category')
 const { query, apply, setPage, reset } = useCatalogQuery(() => category.value)
 
 const sortOptions = computed(() => [
+  { value: '', label: t('catalog.sort.default') },
   { value: 'rate_min', label: t('catalog.sort.rate_min') },
   { value: '-rate_max', label: t('catalog.sort.-rate_max') },
   { value: 'amount_min', label: t('catalog.sort.amount_min') },
@@ -30,7 +31,7 @@ const sortOptions = computed(() => [
 ])
 
 function onSortChange(value: string) {
-  apply({ ...query.value, sort: value })
+  apply({ ...query.value, sort: value || undefined })
 }
 
 const products = ref<Product[]>([])
