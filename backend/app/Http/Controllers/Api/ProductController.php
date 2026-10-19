@@ -433,9 +433,9 @@ class ProductController extends Controller
 
     /**
      * Подборка для главной (?featured=1): каждый банк максимум один раз,
-     * банки — по убыванию коэффициента (тай-брейк — лучшая ставка), и все
-     * карточки одного «типа» (subcategory), чтобы предложения были
-     * сопоставимы. Тип выбирается псевдослучайно и меняется раз в сутки
+     * в подборку попадают банки с наибольшим коэффициентом (тай-брейк —
+     * лучшая ставка), все карточки одного «типа» (subcategory), чтобы
+     * предложения были сопоставимы; уже внутри подборки порядок — по ставке. Тип выбирается псевдослучайно и меняется раз в сутки
      * (по времени Душанбе), а не на каждый запрос — иначе SSR-ответ и повторный
      * запрос клиента при гидратации показали бы разные карточки. Если у выбранного типа
      * меньше банков, чем нужно слотов, добираем лучшими продуктами остальных
@@ -463,12 +463,13 @@ class ProductController extends Controller
             ->all();
 
         // Лучшие продукты первыми: сперва по дефолтному полю эндпоинта, затем по id.
-        usort($rows, function (Product $a, Product $b) use ($descending, $worst): int {
+        $byRate = function (Product $a, Product $b) use ($descending, $worst): int {
             $va = $a->sort_value === null ? $worst : (float) $a->sort_value;
             $vb = $b->sort_value === null ? $worst : (float) $b->sort_value;
 
             return ($descending ? $vb <=> $va : $va <=> $vb) ?: $a->id <=> $b->id;
-        });
+        };
+        usort($rows, $byRate);
 
         $bySubcategory = [];
         foreach ($rows as $row) {
@@ -479,6 +480,43 @@ class ProductController extends Controller
         $needed = min($perPage, $banksPerType === [] ? 0 : max($banksPerType));
         $eligible = array_keys(array_filter($banksPerType, fn (int $n): bool => $n >= $needed));
         sort($eligible);
+
+        // Тип берём только из тех, где есть самый приоритетный банк — иначе он
+        // попал бы в подборку худшим продуктом чужого для него типа (или вовсе без него).
+        $topCoefficient = $rows === [] ? 0.0 : max(array_map(fn (Product $p): float => (float) $p->coefficient, $rows));
+        if ($topCoefficient > 0) {
+            $typesWithTopBank = [];
+            foreach ($rows as $row) {
+                if ((float) $row->coefficient === $topCoefficient) {
+                    $typesWithTopBank[$row->subcategory ?? 'other'] = true;
+                }
+            }
+            $typesWithTopBank = array_keys($typesWithTopBank);
+            sort($typesWithTopBank);
+            // Блок называется «Топ» — продукт приоритетного банка должен быть там реально
+            // конкурентным: берём типы, где его лучший продукт попадает в первые $perPage
+            // по ставке; если таких нет — типы, где он ближе всего к вершине.
+            $typeRank = [];
+            foreach ($typesWithTopBank as $type) {
+                $seen = [];
+                foreach ($bySubcategory[$type] as $row) {
+                    $seen[$row->bank_id] = true;
+                    if ((float) $row->coefficient === $topCoefficient) {
+                        $typeRank[$type] = count($seen);
+                        break;
+                    }
+                }
+            }
+            $competitive = array_keys(array_filter($typeRank, fn (int $rank): bool => $rank <= $perPage));
+            if ($competitive === []) {
+                $bestRank = min($typeRank);
+                $competitive = array_keys(array_filter($typeRank, fn (int $rank): bool => $rank === $bestRank));
+            }
+            sort($competitive);
+
+            // Предпочитаем и конкурентный тип, и с достаточным числом банков на все слоты.
+            $eligible = array_values(array_intersect($eligible, $competitive)) ?: $competitive;
+        }
 
         $picked = [];
         if ($eligible !== []) {
@@ -492,7 +530,11 @@ class ProductController extends Controller
             $picked = [...$picked, ...$filler];
         }
 
-        $ids = array_map(fn (Product $p): int => $p->id, array_slice($picked, 0, $perPage));
+        // Коэффициент решает, КТО попал в подборку; показываем уже по ставке — лучшие сверху.
+        $picked = array_slice($picked, 0, $perPage);
+        usort($picked, $byRate);
+
+        $ids = array_map(fn (Product $p): int => $p->id, $picked);
 
         return new LengthAwarePaginator($this->hydrateInOrder($ids), count($ids), $perPage, 1);
     }

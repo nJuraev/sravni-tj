@@ -391,19 +391,66 @@ class ProductCatalogTest extends TestCase
         $priority = Bank::factory()->create(['sort_coefficient' => 10]);
         $banks = Bank::factory()->count(3)->create(['sort_coefficient' => 0]);
 
-        Product::factory()->for($priority, 'bank')->credit()->count(3)->create(['subcategory' => 'consumer']);
-        foreach ($banks as $bank) {
-            Product::factory()->for($bank, 'bank')->credit()->create(['subcategory' => 'consumer']);
+        Product::factory()->for($priority, 'bank')->credit()->count(3)->create(['subcategory' => 'consumer', 'rate_min' => 25, 'rate_max' => 30]);
+        foreach ($banks as $i => $bank) {
+            Product::factory()->for($bank, 'bank')->credit()->create(['subcategory' => 'consumer', 'rate_min' => 5 + $i, 'rate_max' => 9 + $i]);
         }
         Product::factory()->for($banks[0], 'bank')->credit()->create(['subcategory' => 'mortgage']);
         Product::factory()->for($banks[1], 'bank')->credit()->create(['subcategory' => 'mortgage']);
 
         $data = $this->getJson('/api/products/credits?featured=1&per_page=3')->assertOk()->json('data');
 
+        $bankIds = array_column(array_column($data, 'bank'), 'id');
         $this->assertCount(3, $data);
-        $this->assertCount(3, array_unique(array_column(array_column($data, 'bank'), 'id')));
-        $this->assertSame([(int) $priority->id], [array_column($data, 'bank')[0]['id']]);
+        $this->assertCount(3, array_unique($bankIds));
+        $this->assertContains((int) $priority->id, $bankIds);
         $this->assertSame(['consumer'], array_values(array_unique(array_column($data, 'subcategory'))));
+
+        $rates = array_column($data, 'rate_min');
+        $sorted = $rates;
+        sort($sorted);
+        $this->assertSame($sorted, $rates, 'after selection cards are ordered by rate, best first');
+    }
+
+    public function test_featured_type_is_chosen_among_those_the_priority_bank_offers(): void
+    {
+        $priority = Bank::factory()->create(['sort_coefficient' => 10]);
+        $banks = Bank::factory()->count(3)->create(['sort_coefficient' => 0]);
+
+        // Ипотека — у приоритетного банка; потребительских много у остальных. Подборка не должна оставить приоритетный банк без карточки.
+        Product::factory()->for($priority, 'bank')->credit()->create(['subcategory' => 'mortgage']);
+        foreach ($banks as $bank) {
+            Product::factory()->for($bank, 'bank')->credit()->create(['subcategory' => 'consumer']);
+        }
+        Product::factory()->for($banks[0], 'bank')->credit()->create(['subcategory' => 'mortgage']);
+
+        $data = $this->getJson('/api/products/credits?featured=1&per_page=3')->assertOk()->json('data');
+
+        $this->assertContains((int) $priority->id, array_column(array_column($data, 'bank'), 'id'));
+        $this->assertCount(3, $data);
+    }
+
+    public function test_featured_skips_types_where_priority_bank_is_not_competitive_by_rate(): void
+    {
+        $priority = Bank::factory()->create(['sort_coefficient' => 10]);
+        $banks = Bank::factory()->count(3)->create(['sort_coefficient' => 0]);
+
+        // «Накопительные»: у приоритетного банка 6% против 14–16% у остальных — в топ-3 не попадает.
+        Product::factory()->for($priority, 'bank')->deposit()->create(['subcategory' => 'savings', 'rate_min' => 6, 'rate_max' => 6]);
+        foreach ($banks as $i => $bank) {
+            Product::factory()->for($bank, 'bank')->deposit()->create(['subcategory' => 'savings', 'rate_min' => 14 + $i, 'rate_max' => 14 + $i]);
+        }
+        // «Срочные»: тут приоритетный банк лучший.
+        Product::factory()->for($priority, 'bank')->deposit()->create(['subcategory' => 'term', 'rate_min' => 14, 'rate_max' => 14]);
+        foreach ($banks as $i => $bank) {
+            Product::factory()->for($bank, 'bank')->deposit()->create(['subcategory' => 'term', 'rate_min' => 9 + $i, 'rate_max' => 9 + $i]);
+        }
+
+        $data = $this->getJson('/api/products/deposits?featured=1&per_page=3')->assertOk()->json('data');
+
+        $this->assertSame(['term'], array_values(array_unique(array_column($data, 'subcategory'))));
+        $this->assertContains((int) $priority->id, array_column(array_column($data, 'bank'), 'id'));
+        $this->assertSame(14.0, (float) $data[0]['rate_max'], 'best rate first after selection');
     }
 
     public function test_featured_fills_remaining_slots_with_other_banks_when_type_is_small(): void
