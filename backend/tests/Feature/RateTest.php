@@ -55,6 +55,31 @@ class RateTest extends TestCase
             ->assertJsonPath('data.0.rate_date', '2026-06-14');
     }
 
+    public function test_index_orders_banks_by_sort_coefficient_then_name(): void
+    {
+        $regularB = Bank::factory()->create(['name_ru' => 'Б банк', 'sort_coefficient' => 0]);
+        $regularA = Bank::factory()->create(['name_ru' => 'А банк', 'sort_coefficient' => 0]);
+        $priority = Bank::factory()->create(['name_ru' => 'Я банк', 'sort_coefficient' => 10]);
+
+        foreach ([$regularB, $regularA, $priority] as $bank) {
+            foreach (['USD', 'EUR'] as $currency) {
+                BankCurrencyRate::factory()->for($bank, 'bank')->create([
+                    'currency' => $currency, 'category' => 'cash', 'rate_date' => '2026-06-14',
+                ]);
+            }
+        }
+
+        $bankIds = array_column($this->getJson('/api/rates')->assertOk()->json('data'), 'bank');
+        $ordered = array_values(array_unique(array_column($bankIds, 'id')));
+
+        $this->assertSame([(int) $priority->id, (int) $regularA->id, (int) $regularB->id], $ordered);
+        $this->assertSame(
+            [$priority->id, $priority->id, $regularA->id, $regularA->id, $regularB->id, $regularB->id],
+            array_column($bankIds, 'id'),
+            'rates of one bank stay together'
+        );
+    }
+
     public function test_index_excludes_inactive_banks(): void
     {
         $active = Bank::factory()->create();

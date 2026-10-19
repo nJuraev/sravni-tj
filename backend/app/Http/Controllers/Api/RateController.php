@@ -35,7 +35,16 @@ class RateController extends Controller
             ->when($request->filled('currency'), fn (Builder $q) => $q->where('currency', strtoupper((string) $request->string('currency'))))
             ->when($request->filled('category'), fn (Builder $q) => $q->where('category', $request->string('category')))
             ->with('bank')
-            ->get();
+            ->get()
+            // Банки по убыванию коэффициента (при равенстве — по названию); внутри банка
+            // сохраняется порядок валюта/категория из запроса. Фронт группирует курсы
+            // в порядке появления банков, поэтому порядок задаём здесь.
+            ->sortBy([
+                fn (BankCurrencyRate $a, BankCurrencyRate $b) => (float) $b->bank->sort_coefficient <=> (float) $a->bank->sort_coefficient,
+                fn (BankCurrencyRate $a, BankCurrencyRate $b) => strcmp((string) $a->bank->name_ru, (string) $b->bank->name_ru),
+                fn (BankCurrencyRate $a, BankCurrencyRate $b) => $a->bank_id <=> $b->bank_id,
+            ])
+            ->values();
 
         return response()->json([
             'data' => RateResource::collection($rates),

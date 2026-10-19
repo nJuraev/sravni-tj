@@ -97,7 +97,8 @@ const groups = computed<BankRateGroup[]>(() => {
     }
     group.byCategory[r.category].push(r)
   }
-  return [...byBank.values()].sort((a, b) => name(a.bank).localeCompare(name(b.bank)))
+  // Порядок банков задаёт API (по коэффициенту банка) — Map сохраняет порядок появления.
+  return [...byBank.values()]
 })
 
 const isEmpty = computed(() => status.value === 'loaded' && groups.value.length === 0)
