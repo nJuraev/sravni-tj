@@ -184,7 +184,7 @@ function iconButton(tooltip: string, icon: typeof CubeOutline, type: 'default' |
     <n-card :bordered="false">
       <n-data-table
         :columns="columns" :data="banks" :loading="loading"
-        :pagination="{ pageSize: 15 }" :row-key="(b: AdminBank) => b.id"
+        :pagination="false" :row-key="(b: AdminBank) => b.id"
       />
     </n-card>
 

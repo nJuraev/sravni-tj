@@ -26,6 +26,7 @@ class BankController extends Controller
     {
         $query = Bank::query()
             ->withCount(['products', 'leads'])
+            ->orderByDesc('sort_coefficient')
             ->orderBy('name_ru');
 
         if ($search = trim((string) $request->query('search', ''))) {
